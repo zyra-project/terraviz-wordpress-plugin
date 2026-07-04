@@ -7,7 +7,13 @@
 	"category": "embed",
 	"icon": "admin-site-alt3",
 	"description": "Embed a single live Terraviz globe for one dataset, with an accessible server-rendered fallback.",
-	"keywords": [ "terraviz", "globe", "dataset", "noaa", "science on a sphere" ],
+	"keywords": [
+		"terraviz",
+		"globe",
+		"dataset",
+		"noaa",
+		"science on a sphere"
+	],
 	"textdomain": "terraviz",
 	"supports": {
 		"html": false,

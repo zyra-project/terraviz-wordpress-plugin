@@ -22,9 +22,9 @@ import ServerSideRender from '@wordpress/server-side-render';
  * Build an Edit component for a given embed type.
  *
  * @param {Object} config
- * @param {string} config.blockName  Fully-qualified block name.
- * @param {string} config.type       'dataset' | 'tour' | 'catalog'.
- * @param {string} config.title      Human title for placeholders.
+ * @param {string} config.blockName Fully-qualified block name.
+ * @param {string} config.type      'dataset' | 'tour' | 'catalog'.
+ * @param {string} config.title     Human title for placeholders.
  * @return {Function} Edit component.
  */
 export function createEdit( { blockName, type, title } ) {
@@ -75,7 +75,10 @@ export function createEdit( { blockName, type, title } ) {
 						) }
 						{ type === 'catalog' && (
 							<TextControl
-								label={ __( 'Category filter (optional)', 'terraviz' ) }
+								label={ __(
+									'Category filter (optional)',
+									'terraviz'
+								) }
 								value={ category || '' }
 								onChange={ ( value ) =>
 									setAttributes( { category: value } )
@@ -202,12 +205,23 @@ export function createEdit( { blockName, type, title } ) {
 							label={ __( 'Layout', 'terraviz' ) }
 							value={ String( layout || 1 ) }
 							options={ [
-								{ label: __( 'Single globe', 'terraviz' ), value: '1' },
-								{ label: __( 'Side by side', 'terraviz' ), value: '2' },
-								{ label: __( 'Four globes', 'terraviz' ), value: '4' },
+								{
+									label: __( 'Single globe', 'terraviz' ),
+									value: '1',
+								},
+								{
+									label: __( 'Side by side', 'terraviz' ),
+									value: '2',
+								},
+								{
+									label: __( 'Four globes', 'terraviz' ),
+									value: '4',
+								},
 							] }
 							onChange={ ( value ) =>
-								setAttributes( { layout: parseInt( value, 10 ) } )
+								setAttributes( {
+									layout: parseInt( value, 10 ),
+								} )
 							}
 						/>
 					</PanelBody>

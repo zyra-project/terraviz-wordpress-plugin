@@ -7,7 +7,13 @@
 	"category": "embed",
 	"icon": "grid-view",
 	"description": "Embed the full Terraviz catalog browser, with a server-rendered, crawlable grid of dataset cards as the fallback.",
-	"keywords": [ "terraviz", "globe", "catalog", "noaa", "science on a sphere" ],
+	"keywords": [
+		"terraviz",
+		"globe",
+		"catalog",
+		"noaa",
+		"science on a sphere"
+	],
 	"textdomain": "terraviz",
 	"supports": {
 		"html": false,
