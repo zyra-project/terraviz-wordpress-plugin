@@ -1,0 +1,35 @@
+{
+	"name": "terraviz-wordpress-plugin",
+	"version": "0.1.0",
+	"description": "Embed live Terraviz \"Science On a Sphere\" globes into WordPress pages and posts.",
+	"author": "Zyra Project",
+	"license": "GPL-2.0-or-later",
+	"private": true,
+	"keywords": [
+		"wordpress",
+		"gutenberg",
+		"terraviz",
+		"noaa",
+		"embed"
+	],
+	"homepage": "https://github.com/zyra-project/terraviz-wordpress-plugin",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/zyra-project/terraviz-wordpress-plugin.git"
+	},
+	"scripts": {
+		"build": "wp-scripts build --webpack-src-dir=blocks",
+		"start": "wp-scripts start --webpack-src-dir=blocks",
+		"format": "wp-scripts format ./blocks",
+		"lint:js": "wp-scripts lint-js ./blocks",
+		"lint:css": "wp-scripts lint-style ./blocks/**/*.css",
+		"packages-update": "wp-scripts packages-update",
+		"env": "wp-env",
+		"env:start": "wp-env start",
+		"env:stop": "wp-env stop"
+	},
+	"devDependencies": {
+		"@wordpress/env": "^10.0.0",
+		"@wordpress/scripts": "^30.0.0"
+	}
+}

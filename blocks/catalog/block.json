@@ -1,0 +1,35 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "terraviz/catalog",
+	"version": "0.1.0",
+	"title": "Terraviz Catalog",
+	"category": "embed",
+	"icon": "grid-view",
+	"description": "Embed the full Terraviz catalog browser, with a server-rendered, crawlable grid of dataset cards as the fallback.",
+	"keywords": [ "terraviz", "globe", "catalog", "noaa", "science on a sphere" ],
+	"textdomain": "terraviz",
+	"supports": {
+		"html": false,
+		"align": [ "wide", "full" ],
+		"anchor": true
+	},
+	"attributes": {
+		"origin": { "type": "string", "default": "" },
+		"category": { "type": "string", "default": "" },
+		"terrain": { "type": "boolean" },
+		"labels": { "type": "boolean" },
+		"borders": { "type": "boolean" },
+		"rotate": { "type": "boolean" },
+		"chat": { "type": "boolean" },
+		"layout": { "type": "number", "default": 1 },
+		"aspectRatio": { "type": "string", "default": "" },
+		"poster": { "type": "boolean" },
+		"interactive": { "type": "boolean", "default": true },
+		"heading": { "type": "string", "default": "h3" },
+		"showTitle": { "type": "boolean", "default": true },
+		"showAbstract": { "type": "boolean", "default": true }
+	},
+	"editorScript": "file:./index.js",
+	"style": "terraviz-embed"
+}
