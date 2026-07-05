@@ -1,0 +1,41 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "terraviz/dataset",
+	"version": "0.1.0",
+	"title": "Terraviz Dataset",
+	"category": "embed",
+	"icon": "admin-site-alt3",
+	"description": "Embed a single live Terraviz globe for one dataset, with an accessible server-rendered fallback.",
+	"keywords": [
+		"terraviz",
+		"globe",
+		"dataset",
+		"noaa",
+		"science on a sphere"
+	],
+	"textdomain": "terraviz",
+	"supports": {
+		"html": false,
+		"align": [ "wide", "full" ],
+		"anchor": true
+	},
+	"attributes": {
+		"id": { "type": "string", "default": "" },
+		"origin": { "type": "string", "default": "" },
+		"terrain": { "type": "boolean" },
+		"labels": { "type": "boolean" },
+		"borders": { "type": "boolean" },
+		"rotate": { "type": "boolean" },
+		"chat": { "type": "boolean" },
+		"layout": { "type": "number", "default": 1 },
+		"aspectRatio": { "type": "string", "default": "" },
+		"poster": { "type": "boolean" },
+		"interactive": { "type": "boolean", "default": true },
+		"heading": { "type": "string", "default": "h3" },
+		"showTitle": { "type": "boolean", "default": true },
+		"showAbstract": { "type": "boolean", "default": true }
+	},
+	"editorScript": "file:./index.js",
+	"style": "terraviz-embed"
+}
