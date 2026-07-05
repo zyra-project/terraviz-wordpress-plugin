@@ -2,8 +2,14 @@
 
 Guidance for Claude (and humans) working on the Terraviz WordPress plugin.
 Keep this short and current; it records the non-obvious conventions, not the
-whole design (that lives in `README.md` and the Terraviz repo's
-`docs/WORDPRESS_INTEGRATION_PLAN.md`).
+whole design. For that, read:
+
+- [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) — **the
+  plugin-local roadmap and status tracker** (phases, what's shipped, what's
+  next). Start here for "what does/will this plugin do?".
+- `README.md` — the repo overview and dev commands.
+- The Terraviz repo's `docs/WORDPRESS_INTEGRATION_PLAN.md` — the authoritative
+  *rationale* the local plan cites (see the branch caveat below).
 
 ## What this plugin is
 
@@ -53,9 +59,13 @@ and `TERRAVIZ_SCHEMA_VERSION` constants in `terraviz.php`.
 
 ### Wider design context (read when scoping later phases)
 
-- `docs/WORDPRESS_INTEGRATION_PLAN.md` — **the master plan**. The read/publish
-  "seam", the phased plan (§8), non-goals (§9), and the auth question the
-  publish phase inherits. This plugin implements **Phase 1**.
+- [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) (this repo) — the
+  **plugin-local** phased roadmap + status. Cites the upstream plan for
+  rationale; it's the source of truth for *what* the plugin does.
+- `docs/WORDPRESS_INTEGRATION_PLAN.md` (Terraviz repo) — **the master plan** /
+  authoritative rationale. The read/publish "seam", the phased plan (§8),
+  non-goals (§9), and the auth question the publish phase inherits. This plugin
+  implements **Phase 1**.
 - `docs/architecture/federation-scoping.md` — partner-tier framing + the
   service-token/OIDC auth question (§8 decision 4) the publish phase inherits.
 - `docs/CATALOG_PUBLISHING_TOOLS.md` — the publish API + CLI, the model for the

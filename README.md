@@ -9,9 +9,11 @@ the existing Terraviz web app via an iframe and reads Terraviz's public,
 versioned HTTP APIs. Phase 1 (this release) is **zero-credential**: the
 embed/read path is entirely public.
 
-> Design rationale, phasing, and the read/publish "seam" live in the Terraviz
-> repo's `docs/WORDPRESS_INTEGRATION_PLAN.md`. This plugin implements **Phase 1**
-> of that plan.
+> **Roadmap & status:** [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
+> — the plugin-local phased plan (what's shipped, what's next). The design
+> *rationale* (the read/publish "seam", the auth model, non-goals) lives in the
+> Terraviz repo's `docs/WORDPRESS_INTEGRATION_PLAN.md`, which the local plan
+> cites. This plugin implements **Phase 1**.
 
 ## What's here (Phase 1)
 
@@ -64,4 +66,7 @@ Requires WordPress ≥ 6.1 and PHP ≥ 7.4. Licensed GPLv2-or-later.
 
 The wp-admin publisher dashboard, asset upload, the service-token proxy,
 per-user auth, and the blog bridge are **later, separately gated phases**.
-Two-way blog sync is an explicit non-goal. See the integration plan.
+Two-way blog sync is an explicit non-goal. See
+[`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) for the full
+phased roadmap and the near-term Phase-1 follow-ups (the editor typeahead
+picker, hero/related blocks).
