@@ -54,6 +54,8 @@ Yes. Every embed renders a real HTML fallback (heading, abstract, thumbnail, can
 
 Yes — set the node origin in **Settings → Terraviz**, or override it per block/shortcode with the `origin` attribute.
 
+For safety, a per-embed `origin` override changes which node the interactive globe (iframe) loads from, but the plugin only fetches the server-side fallback data from the site-configured node. A site owner can allow the server-side fetch to use additional trusted nodes with the `terraviz_allowed_fetch_origins` filter.
+
 == Shortcode ==
 
 `[terraviz dataset="hurricane-season-2024" terrain="on" rotate="on"]`

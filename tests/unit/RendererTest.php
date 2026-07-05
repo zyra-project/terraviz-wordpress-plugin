@@ -231,10 +231,67 @@ class RendererTest extends WP_UnitTestCase {
 		$this->assertStringNotContainsString( 'INTERNAL_SOS_768_LEGACY', $html );
 	}
 
-	public function test_per_embed_origin_fetches_ssr_from_that_node(): void {
-		$node = 'https://noaa.example';
+	public function test_untrusted_origin_override_is_not_fetched_server_side(): void {
+		$node = 'https://attacker.example';
 
-		// The default-origin catalog has NO data; only the override node does.
+		// The (trusted) default catalog holds the data; the override node's
+		// factory would ALSO resolve it — but the plugin must never call it,
+		// because the override origin is author-controllable (SSRF).
+		$default = new Catalog(
+			new FakeReader( self::ORIGIN, array( '/api/v1/datasets/INTERNAL_SOS_768' => $this->dataset_payload() ) ),
+			60
+		);
+
+		$factory_called_with = array();
+		$renderer            = new Renderer(
+			$default,
+			static function ( string $origin ) use ( &$factory_called_with ) {
+				$factory_called_with[] = $origin;
+				// A catalog that would happily serve the attacker's node.
+				return new \Terraviz\Api\Catalog(
+					new FakeReader(
+						$origin,
+						array(
+							'/api/v1/datasets/INTERNAL_SOS_768' => array(
+								'id'    => 'x',
+								'title' => 'PWNED',
+							),
+						)
+					),
+					60
+				);
+			}
+		);
+
+		$html = $renderer->render(
+			array(
+				'type'   => 'dataset',
+				'id'     => 'INTERNAL_SOS_768',
+				'origin' => $node,
+			)
+		);
+
+		// The untrusted origin was NEVER fetched server-side.
+		$this->assertNotContains( $node, $factory_called_with );
+		$this->assertStringNotContainsString( 'PWNED', $html );
+		// SSR data fell back to the trusted default node.
+		$this->assertStringContainsString( 'Hurricane Season 2024', $html );
+		// The iframe still targets the override origin (that's the visitor's
+		// browser, not our server) — the override is honoured for the embed.
+		$this->assertStringContainsString( 'data-terraviz-src="' . $node, $html );
+	}
+
+	public function test_allowlisted_origin_is_fetched_server_side(): void {
+		$node = 'https://partner.example';
+
+		add_filter(
+			'terraviz_allowed_fetch_origins',
+			static function ( $origins ) use ( $node ) {
+				$origins[] = $node;
+				return $origins;
+			}
+		);
+
 		$default      = new Catalog( new FakeReader( self::ORIGIN, array() ), 60 );
 		$node_catalog = new Catalog(
 			new FakeReader( $node, array( '/api/v1/datasets/INTERNAL_SOS_768' => $this->dataset_payload() ) ),
@@ -256,12 +313,8 @@ class RendererTest extends WP_UnitTestCase {
 			)
 		);
 
-		// SSR title/abstract resolved from the override node (not the empty
-		// default catalog, which would only yield the raw id).
+		// An admin-allowlisted origin IS fetched server-side.
 		$this->assertStringContainsString( 'Hurricane Season 2024', $html );
-		// Embed + canonical URLs target the override node.
 		$this->assertStringContainsString( $node . '/dataset/INTERNAL_SOS_768', $html );
-		$this->assertStringContainsString( 'data-terraviz-src="' . $node, $html );
-		$this->assertStringNotContainsString( self::ORIGIN, $html );
 	}
 }

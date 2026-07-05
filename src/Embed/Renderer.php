@@ -62,13 +62,25 @@ final class Renderer {
 	/**
 	 * The catalog to read SSR data from for a given embed origin.
 	 *
-	 * The SSR fallback must come from the *same* node the iframe targets, so a
-	 * per-block/shortcode `origin` override reads titles/abstracts/thumbnails
-	 * from that node — not the site default.
+	 * The SSR fallback should come from the same node the iframe targets — but
+	 * the per-embed `origin` attribute is author-controllable (anyone with
+	 * `edit_posts`), and fetching it server-side would be an SSRF vector
+	 * (arbitrary host/port, incl. internal services and cloud metadata). So we
+	 * only fetch server-side from an **admin-approved** origin: the
+	 * site-configured node, plus any origins a site owner adds via the
+	 * `terraviz_allowed_fetch_origins` filter. An override to any other origin
+	 * still drives the *iframe* (the visitor's browser, not our server), but its
+	 * SSR data falls back to the trusted default node.
 	 *
 	 * @param string $origin Normalised node origin for this embed.
 	 */
 	private function catalog_for( string $origin ): Catalog {
+		if ( ! $this->origin_allowed( $origin ) ) {
+			// Untrusted per-embed origin: never issue a server-side request to
+			// it. Read SSR data from the trusted default node instead.
+			return $this->catalog;
+		}
+
 		if ( $origin === $this->catalog->origin() ) {
 			return $this->catalog;
 		}
@@ -78,6 +90,34 @@ final class Renderer {
 		}
 
 		return new Catalog( new Client( $origin ) );
+	}
+
+	/**
+	 * Whether the plugin may issue a server-side read request to an origin.
+	 *
+	 * Defaults to the site-configured node only; a site owner (not a post
+	 * author) can widen this to trusted partner nodes via the filter.
+	 *
+	 * @param string $origin Normalised node origin.
+	 */
+	private function origin_allowed( string $origin ): bool {
+		$allowed = array( Options::origin(), $this->catalog->origin() );
+
+		/**
+		 * Filter the node origins the plugin may fetch SSR data from
+		 * server-side. Add trusted partner-node origins here; never expose this
+		 * to untrusted (post-author) input.
+		 *
+		 * @param array<int,string> $allowed Allowed origins.
+		 */
+		$allowed = apply_filters( 'terraviz_allowed_fetch_origins', $allowed );
+
+		$normalized = array();
+		foreach ( (array) $allowed as $candidate ) {
+			$normalized[] = Options::normalize_origin( (string) $candidate );
+		}
+
+		return in_array( $origin, $normalized, true );
 	}
 
 	/**

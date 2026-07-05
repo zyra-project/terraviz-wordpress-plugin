@@ -17,9 +17,10 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Thin wrapper over the WordPress HTTP API for GETting Terraviz's public,
  * unauthenticated read endpoints.
  *
- * Uses only `wp_remote_get()` (never PHP's own cURL/streams) so the plugin
- * stays WordPress-VIP-review-clean, and never sends credentials — the entire
- * read path is public in Phase 1.
+ * Uses only `wp_safe_remote_get()` (never PHP's own cURL/streams) so the
+ * plugin stays WordPress-VIP-review-clean, blocks requests to loopback /
+ * private / link-local hosts (SSRF defense-in-depth), and never sends
+ * credentials — the entire read path is public in Phase 1.
  */
 final class Client implements JsonReader {
 
@@ -71,16 +72,20 @@ final class Client implements JsonReader {
 		/**
 		 * Filter the request args for a Terraviz read-API call.
 		 *
-		 * @param array  $args Args passed to wp_remote_get().
+		 * @param array  $args Args passed to wp_safe_remote_get().
 		 * @param string $url  Fully composed request URL.
 		 */
 		$args = apply_filters(
 			'terraviz_request_args',
 			array(
-				'timeout'     => $this->timeout,
-				'redirection' => 2,
-				'headers'     => array(
-					'Accept' => 'application/json',
+				'timeout'            => $this->timeout,
+				'redirection'        => 2,
+				// Belt-and-suspenders SSRF guard: even for an admin-approved
+				// origin, refuse to follow a redirect into a private/reserved
+				// host. wp_safe_remote_get() already validates the initial URL.
+				'reject_unsafe_urls' => true,
+				'headers'            => array(
+					'Accept'     => 'application/json',
 					// A version-only UA — deliberately no site URL, to keep the
 					// read path from disclosing the WordPress site's address to
 					// the node. Add one via the `terraviz_request_args` filter
@@ -91,7 +96,7 @@ final class Client implements JsonReader {
 			$url
 		);
 
-		$response = wp_remote_get( $url, $args );
+		$response = wp_safe_remote_get( $url, $args );
 
 		if ( is_wp_error( $response ) ) {
 			return null;
