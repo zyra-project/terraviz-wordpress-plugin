@@ -164,6 +164,7 @@ hand; they're excluded from PHPCS.
   PHP 7.4 and 8.2. All must pass. The DCO check runs separately (see above).
 - `.github/workflows/semgrep.yml` — SAST for the PHP/JS sources, uploading SARIF
   to the Security → Code scanning tab. CodeQL has **no PHP analyzer**, so Semgrep
-  is what actually covers this (mostly-PHP) codebase. Non-blocking to start;
-  promote to a required check once the baseline is clean. `.semgrepignore` skips
-  vendored/build output and the generated `src/Contract/*` types.
+  is what actually covers this (mostly-PHP) codebase. **Blocking** — `semgrep
+  scan` exits non-zero on any finding and fails the check (baseline is 0
+  findings). `.semgrepignore` skips vendored/build output and the generated
+  `src/Contract/*` types.
