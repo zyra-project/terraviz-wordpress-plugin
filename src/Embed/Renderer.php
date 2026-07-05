@@ -329,8 +329,6 @@ final class Renderer {
 		$catalog = $this->catalog_for( $atts['origin'] );
 		$rows    = $catalog->get_related( $id );
 
-		$this->enqueue();
-
 		if ( empty( $rows ) ) {
 			return $this->notice( __( 'No related Terraviz datasets found.', 'terraviz' ) );
 		}
@@ -359,6 +357,9 @@ final class Renderer {
 		if ( '' === $cards ) {
 			return $this->notice( __( 'No related Terraviz datasets found.', 'terraviz' ) );
 		}
+
+		// Only load frontend assets once we know a rail will actually render.
+		$this->enqueue();
 
 		$heading = $atts['showTitle']
 			? sprintf(
@@ -427,14 +428,18 @@ final class Renderer {
 	 * @param int    $limit Max characters.
 	 */
 	private function truncate( string $text, int $limit ): string {
-		if ( function_exists( 'mb_strlen' ) ? mb_strlen( $text ) <= $limit : strlen( $text ) <= $limit ) {
+		// Use the mb_* family throughout when it's available, so a mid-string
+		// cut never splits a multibyte character.
+		$has_mb = function_exists( 'mb_strlen' );
+
+		if ( $has_mb ? mb_strlen( $text ) <= $limit : strlen( $text ) <= $limit ) {
 			return $text;
 		}
 
-		$cut = function_exists( 'mb_substr' ) ? mb_substr( $text, 0, $limit ) : substr( $text, 0, $limit );
-		$sp  = strrpos( $cut, ' ' );
+		$cut = $has_mb ? mb_substr( $text, 0, $limit ) : substr( $text, 0, $limit );
+		$sp  = $has_mb ? mb_strrpos( $cut, ' ' ) : strrpos( $cut, ' ' );
 		if ( false !== $sp && $sp > 0 ) {
-			$cut = substr( $cut, 0, $sp );
+			$cut = $has_mb ? mb_substr( $cut, 0, $sp ) : substr( $cut, 0, $sp );
 		}
 
 		return $cut . '…';
