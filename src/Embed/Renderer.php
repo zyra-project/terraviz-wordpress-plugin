@@ -354,6 +354,12 @@ final class Renderer {
 			}
 		}
 
+		// The response had rows but none were usable (e.g. all missing an id):
+		// show the notice rather than an empty rail.
+		if ( '' === $cards ) {
+			return $this->notice( __( 'No related Terraviz datasets found.', 'terraviz' ) );
+		}
+
 		$heading = $atts['showTitle']
 			? sprintf(
 				'<%1$s class="terraviz-embed__title">%2$s</%1$s>',

@@ -397,4 +397,29 @@ class RendererTest extends WP_UnitTestCase {
 
 		$this->assertStringContainsString( 'terraviz-embed--notice', $html );
 	}
+
+	public function test_related_with_only_unusable_rows_is_a_notice(): void {
+		// The endpoint returned rows, but none carry an `id` — so no card can be
+		// built. That must fall back to the notice, not emit an empty rail.
+		$renderer = $this->renderer_with(
+			array(
+				'/api/v1/datasets/INTERNAL_SOS_768/related' => array(
+					'datasets' => array(
+						array( 'title' => 'Missing an id' ),
+						array( 'abstract_snippet' => 'Also no id.' ),
+					),
+				),
+			)
+		);
+
+		$html = $renderer->render(
+			array(
+				'type' => 'related',
+				'id'   => 'INTERNAL_SOS_768',
+			)
+		);
+
+		$this->assertStringContainsString( 'terraviz-embed--notice', $html );
+		$this->assertStringNotContainsString( 'terraviz-embed__rail', $html );
+	}
 }
