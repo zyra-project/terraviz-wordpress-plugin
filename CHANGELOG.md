@@ -22,6 +22,11 @@ Phase 1 — the zero-credential embed plugin.
 - Block-editor typeahead picker: search datasets/tours by title (backed by a
   same-origin, `edit_posts`-gated REST endpoint over the cached catalog), store
   the id automatically, with a "Copy shortcode" button for Classic authors.
+- Right-Now Hero block: embeds the node's curated featured dataset
+  (`/api/v1/featured-hero`), updated automatically.
+- Related Datasets block: a "more like this" card rail from
+  `/api/v1/datasets/:id/related`. Both also available as `[terraviz hero]` and
+  `[terraviz related="…"]` shortcodes.
 - PHPUnit unit tests and a CI smoke test that hits the canonical node's public
   API and asserts a block renders.
 

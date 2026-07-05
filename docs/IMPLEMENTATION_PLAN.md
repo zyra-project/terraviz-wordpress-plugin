@@ -45,7 +45,7 @@ Terraviz node, with **no credentials anywhere**.
 |---|---|---|
 | Plugin scaffold: header, `readme.txt` (WP.org), GPLv2, `@wordpress/scripts` build, `wp-env`, PHPUnit, CI smoke test | ✅ | `terraviz.php`, `.github/workflows/ci.yml` |
 | Settings page: node origin (default canonical, overridable), default embed options, telemetry posture, "test connection" probe — **no token field** | ✅ | `src/Settings.php` |
-| **Dataset / Tour / Catalog** blocks: SSR fallback (title, abstract, thumbnail, tags, canonical link) → lazy iframe, a11y | ✅ | `blocks/*`, `src/Blocks.php`, `src/Embed/Renderer.php` |
+| **Dataset / Tour / Catalog / Hero / Related** blocks: SSR fallback (title, abstract, thumbnail, tags, canonical link) → lazy iframe (or card rail for Related), a11y | ✅ | `blocks/*`, `src/Blocks.php`, `src/Embed/Renderer.php` |
 | `[terraviz]` shortcode sharing one renderer with the blocks | ✅ | `src/Shortcode.php` |
 | oEmbed / paste-a-URL auto-embed | ✅ | `src/Oembed.php` |
 | Catalog + dataset caching in transients | ✅ | `src/Api/Catalog.php` |
@@ -62,12 +62,14 @@ Terraviz node, with **no credentials anywhere**.
   the "no surprise outbound calls" posture, sidesteps CORS) and the endpoint
   reads only the site-configured node, so it is not an SSRF vector.
   `src/Rest/SearchController.php` + `blocks/shared/edit.js`.
-- **Optional extra blocks** (upstream §3.3): a **right-now hero**
-  (`GET /api/v1/featured-hero`) and a **related rail**
-  (`GET /api/v1/datasets/:id/related`).
-- **Analytics reconciliation** (upstream Integration J): document that the
-  embed carries the node's own telemetry; keep the consent-friendly
-  lazy-load default; don't double-count.
+- ✅ **Optional extra blocks** (upstream §3.3): a **right-now hero**
+  (`GET /api/v1/featured-hero`, rendered as a dataset embed) and a **related
+  rail** (`GET /api/v1/datasets/:id/related`, an SSR card rail). Both also
+  available via the `[terraviz hero]` / `[terraviz related="…"]` shortcodes.
+- ✅ **Analytics reconciliation** (upstream Integration J): the embed carries
+  the node's own telemetry (documented on the settings screen + readme); the
+  consent-friendly lazy-load default is exposed via the "Globe loading" /
+  click-to-load-poster settings; the plugin adds no telemetry of its own.
 
 ---
 

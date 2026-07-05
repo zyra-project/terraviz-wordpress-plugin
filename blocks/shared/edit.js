@@ -59,7 +59,10 @@ function buildShortcode( type, attributes ) {
 		if ( category ) {
 			parts.push( `category="${ category }"` );
 		}
+	} else if ( type === 'hero' ) {
+		parts.push( 'hero="true"' );
 	} else {
+		// dataset, tour, related
 		parts.push( `${ type }="${ id || '' }"` );
 	}
 	if ( origin ) {
@@ -107,13 +110,13 @@ function buildShortcode( type, attributes ) {
  * The dataset/tour typeahead picker.
  *
  * @param {Object}   props
- * @param {string}   props.type     'dataset' | 'tour'.
- * @param {string}   props.label    Field label.
- * @param {string}   props.value    Current id.
- * @param {Function} props.onChange Setter for the id.
+ * @param {string}   props.searchType Search scope: 'dataset' | 'tour'.
+ * @param {string}   props.label      Field label.
+ * @param {string}   props.value      Current id.
+ * @param {Function} props.onChange   Setter for the id.
  * @return {JSX.Element} The control.
  */
-function SourcePicker( { type, label, value, onChange } ) {
+function SourcePicker( { searchType, label, value, onChange } ) {
 	const [ options, setOptions ] = useState( [] );
 	// Sequence the async searches: a slow earlier response must not clobber a
 	// newer one, so only the latest request is allowed to update state.
@@ -122,7 +125,12 @@ function SourcePicker( { type, label, value, onChange } ) {
 	const search = ( input ) => {
 		const q = ( input || '' ).trim();
 		const requestId = ++latestRequest.current;
-		apiFetch( { path: addQueryArgs( '/terraviz/v1/search', { q, type } ) } )
+		apiFetch( {
+			path: addQueryArgs( '/terraviz/v1/search', {
+				q,
+				type: searchType,
+			} ),
+		} )
 			.then( ( items ) => {
 				if ( requestId !== latestRequest.current ) {
 					return;
@@ -176,7 +184,7 @@ function SourcePicker( { type, label, value, onChange } ) {
 					'terraviz'
 				) +
 				' ' +
-				( type === 'tour'
+				( searchType === 'tour'
 					? __(
 							'You can also paste a Terraviz tour URL directly into the editor.',
 							'terraviz'
@@ -220,24 +228,40 @@ export function createEdit( { blockName, type, title } ) {
 			showAbstract,
 		} = attributes;
 
-		const needsId = type === 'dataset' || type === 'tour';
+		const needsId =
+			type === 'dataset' || type === 'tour' || type === 'related';
 		const hasSelection = ! needsId || ( id && id.length > 0 );
+		// Globe/display controls only apply to types that embed a globe.
+		const hasGlobe =
+			type === 'dataset' ||
+			type === 'tour' ||
+			type === 'catalog' ||
+			type === 'hero';
+		// The related block's seed is a dataset.
+		const searchType = type === 'tour' ? 'tour' : 'dataset';
 
-		const selectorLabel =
-			type === 'tour'
-				? __( 'Tour slug or ID', 'terraviz' )
-				: __( 'Dataset slug or ID', 'terraviz' );
+		let selectorLabel = __( 'Dataset slug or ID', 'terraviz' );
+		if ( type === 'tour' ) {
+			selectorLabel = __( 'Tour slug or ID', 'terraviz' );
+		} else if ( type === 'related' ) {
+			selectorLabel = __( 'Related to (dataset slug or ID)', 'terraviz' );
+		}
 
-		const placeholderInstructions =
-			type === 'tour'
-				? __(
-						'Search for a Terraviz tour in the block settings to preview the embed.',
-						'terraviz'
-				  )
-				: __(
-						'Search for a Terraviz dataset in the block settings to preview the embed.',
-						'terraviz'
-				  );
+		let placeholderInstructions = __(
+			'Search for a Terraviz dataset in the block settings to preview the embed.',
+			'terraviz'
+		);
+		if ( type === 'tour' ) {
+			placeholderInstructions = __(
+				'Search for a Terraviz tour in the block settings to preview the embed.',
+				'terraviz'
+			);
+		} else if ( type === 'related' ) {
+			placeholderInstructions = __(
+				'Choose a Terraviz dataset in the block settings to show related datasets.',
+				'terraviz'
+			);
+		}
 
 		const shortcode = buildShortcode( type, attributes );
 		const [ copied, setCopied ] = useState( false );
@@ -252,7 +276,7 @@ export function createEdit( { blockName, type, title } ) {
 					<PanelBody title={ __( 'Terraviz source', 'terraviz' ) }>
 						{ needsId && (
 							<SourcePicker
-								type={ type }
+								searchType={ searchType }
 								label={ selectorLabel }
 								value={ id }
 								onChange={ ( next ) =>
@@ -315,24 +339,31 @@ export function createEdit( { blockName, type, title } ) {
 						title={ __( 'Display', 'terraviz' ) }
 						initialOpen={ false }
 					>
-						<ToggleControl
-							label={ __( 'Interactive globe', 'terraviz' ) }
-							checked={ !! interactive }
-							onChange={ ( value ) =>
-								setAttributes( { interactive: value } )
-							}
-							help={ __(
-								'Off shows only the accessible thumbnail + text card.',
-								'terraviz'
-							) }
-						/>
-						<ToggleControl
-							label={ __( 'Click-to-load poster', 'terraviz' ) }
-							checked={ !! poster }
-							onChange={ ( value ) =>
-								setAttributes( { poster: value } )
-							}
-						/>
+						{ hasGlobe && (
+							<ToggleControl
+								label={ __( 'Interactive globe', 'terraviz' ) }
+								checked={ !! interactive }
+								onChange={ ( value ) =>
+									setAttributes( { interactive: value } )
+								}
+								help={ __(
+									'Off shows only the accessible thumbnail + text card.',
+									'terraviz'
+								) }
+							/>
+						) }
+						{ hasGlobe && (
+							<ToggleControl
+								label={ __(
+									'Click-to-load poster',
+									'terraviz'
+								) }
+								checked={ !! poster }
+								onChange={ ( value ) =>
+									setAttributes( { poster: value } )
+								}
+							/>
+						) }
 						<ToggleControl
 							label={ __( 'Show title', 'terraviz' ) }
 							checked={ !! showTitle }
@@ -340,13 +371,15 @@ export function createEdit( { blockName, type, title } ) {
 								setAttributes( { showTitle: value } )
 							}
 						/>
-						<ToggleControl
-							label={ __( 'Show abstract', 'terraviz' ) }
-							checked={ !! showAbstract }
-							onChange={ ( value ) =>
-								setAttributes( { showAbstract: value } )
-							}
-						/>
+						{ hasGlobe && (
+							<ToggleControl
+								label={ __( 'Show abstract', 'terraviz' ) }
+								checked={ !! showAbstract }
+								onChange={ ( value ) =>
+									setAttributes( { showAbstract: value } )
+								}
+							/>
+						) }
 						<SelectControl
 							label={ __( 'Heading level', 'terraviz' ) }
 							value={ heading || 'h3' }
@@ -361,79 +394,83 @@ export function createEdit( { blockName, type, title } ) {
 								setAttributes( { heading: value } )
 							}
 						/>
-						<TextControl
-							label={ __( 'Aspect ratio', 'terraviz' ) }
-							value={ aspectRatio || '' }
-							onChange={ ( value ) =>
-								setAttributes( { aspectRatio: value } )
-							}
-							placeholder={ __( '16:9', 'terraviz' ) }
-						/>
+						{ hasGlobe && (
+							<TextControl
+								label={ __( 'Aspect ratio', 'terraviz' ) }
+								value={ aspectRatio || '' }
+								onChange={ ( value ) =>
+									setAttributes( { aspectRatio: value } )
+								}
+								placeholder={ __( '16:9', 'terraviz' ) }
+							/>
+						) }
 					</PanelBody>
 
-					<PanelBody
-						title={ __( 'Globe view', 'terraviz' ) }
-						initialOpen={ false }
-					>
-						<ToggleControl
-							label={ __( 'Terrain', 'terraviz' ) }
-							checked={ !! terrain }
-							onChange={ ( value ) =>
-								setAttributes( { terrain: value } )
-							}
-						/>
-						<ToggleControl
-							label={ __( 'Place labels', 'terraviz' ) }
-							checked={ !! labels }
-							onChange={ ( value ) =>
-								setAttributes( { labels: value } )
-							}
-						/>
-						<ToggleControl
-							label={ __( 'Borders', 'terraviz' ) }
-							checked={ !! borders }
-							onChange={ ( value ) =>
-								setAttributes( { borders: value } )
-							}
-						/>
-						<ToggleControl
-							label={ __( 'Auto-rotate', 'terraviz' ) }
-							checked={ !! rotate }
-							onChange={ ( value ) =>
-								setAttributes( { rotate: value } )
-							}
-						/>
-						<ToggleControl
-							label={ __( 'Show Orbit chat', 'terraviz' ) }
-							checked={ !! chat }
-							onChange={ ( value ) =>
-								setAttributes( { chat: value } )
-							}
-						/>
-						<SelectControl
-							label={ __( 'Layout', 'terraviz' ) }
-							value={ String( layout || 1 ) }
-							options={ [
-								{
-									label: __( 'Single globe', 'terraviz' ),
-									value: '1',
-								},
-								{
-									label: __( 'Side by side', 'terraviz' ),
-									value: '2',
-								},
-								{
-									label: __( 'Four globes', 'terraviz' ),
-									value: '4',
-								},
-							] }
-							onChange={ ( value ) =>
-								setAttributes( {
-									layout: parseInt( value, 10 ),
-								} )
-							}
-						/>
-					</PanelBody>
+					{ hasGlobe && (
+						<PanelBody
+							title={ __( 'Globe view', 'terraviz' ) }
+							initialOpen={ false }
+						>
+							<ToggleControl
+								label={ __( 'Terrain', 'terraviz' ) }
+								checked={ !! terrain }
+								onChange={ ( value ) =>
+									setAttributes( { terrain: value } )
+								}
+							/>
+							<ToggleControl
+								label={ __( 'Place labels', 'terraviz' ) }
+								checked={ !! labels }
+								onChange={ ( value ) =>
+									setAttributes( { labels: value } )
+								}
+							/>
+							<ToggleControl
+								label={ __( 'Borders', 'terraviz' ) }
+								checked={ !! borders }
+								onChange={ ( value ) =>
+									setAttributes( { borders: value } )
+								}
+							/>
+							<ToggleControl
+								label={ __( 'Auto-rotate', 'terraviz' ) }
+								checked={ !! rotate }
+								onChange={ ( value ) =>
+									setAttributes( { rotate: value } )
+								}
+							/>
+							<ToggleControl
+								label={ __( 'Show Orbit chat', 'terraviz' ) }
+								checked={ !! chat }
+								onChange={ ( value ) =>
+									setAttributes( { chat: value } )
+								}
+							/>
+							<SelectControl
+								label={ __( 'Layout', 'terraviz' ) }
+								value={ String( layout || 1 ) }
+								options={ [
+									{
+										label: __( 'Single globe', 'terraviz' ),
+										value: '1',
+									},
+									{
+										label: __( 'Side by side', 'terraviz' ),
+										value: '2',
+									},
+									{
+										label: __( 'Four globes', 'terraviz' ),
+										value: '4',
+									},
+								] }
+								onChange={ ( value ) =>
+									setAttributes( {
+										layout: parseInt( value, 10 ),
+									} )
+								}
+							/>
+						</PanelBody>
+					) }
 				</InspectorControls>
 
 				{ hasSelection ? (

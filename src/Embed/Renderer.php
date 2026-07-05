@@ -134,6 +134,10 @@ final class Renderer {
 				return $this->render_tour( $atts );
 			case 'catalog':
 				return $this->render_catalog( $atts );
+			case 'hero':
+				return $this->render_hero( $atts );
+			case 'related':
+				return $this->render_related( $atts );
 			case 'dataset':
 			default:
 				return $this->render_dataset( $atts );
@@ -148,7 +152,7 @@ final class Renderer {
 	 */
 	public function normalize( array $atts ): array {
 		$type = isset( $atts['type'] ) ? (string) $atts['type'] : 'dataset';
-		if ( ! in_array( $type, array( 'dataset', 'tour', 'catalog' ), true ) ) {
+		if ( ! in_array( $type, array( 'dataset', 'tour', 'catalog', 'hero', 'related' ), true ) ) {
 			$type = 'dataset';
 		}
 
@@ -288,6 +292,146 @@ final class Renderer {
 			esc_url( $canonical ),
 			esc_html__( 'Open the full catalog on Terraviz ↗', 'terraviz' )
 		);
+	}
+
+	/**
+	 * Render the "right now" hero embed: the node's curated featured dataset,
+	 * shown as a full dataset embed. Degrades to a notice when no hero is set.
+	 *
+	 * @param array<string,mixed> $atts Normalised attributes.
+	 */
+	private function render_hero( array $atts ): string {
+		$hero = $this->catalog_for( $atts['origin'] )->get_featured_hero();
+		$id   = ( is_array( $hero ) && ! empty( $hero['id'] ) ) ? (string) $hero['id'] : '';
+
+		if ( '' === $id ) {
+			return $this->notice( __( 'No featured Terraviz dataset right now.', 'terraviz' ) );
+		}
+
+		// Render exactly like a dataset embed, with the hero's id.
+		$atts['id'] = $id;
+
+		return $this->render_dataset( $atts );
+	}
+
+	/**
+	 * Render a "more like this" rail of related-dataset cards from
+	 * GET /api/v1/datasets/:id/related. SSR-only (links, no globe).
+	 *
+	 * @param array<string,mixed> $atts Normalised attributes.
+	 */
+	private function render_related( array $atts ): string {
+		$id = (string) $atts['id'];
+		if ( '' === $id ) {
+			return $this->notice( __( 'No Terraviz dataset selected for related items.', 'terraviz' ) );
+		}
+
+		$catalog = $this->catalog_for( $atts['origin'] );
+		$rows    = $catalog->get_related( $id );
+
+		$this->enqueue();
+
+		if ( empty( $rows ) ) {
+			return $this->notice( __( 'No related Terraviz datasets found.', 'terraviz' ) );
+		}
+
+		$cards = '';
+		$count = 0;
+		foreach ( $rows as $row ) {
+			if ( ! is_array( $row ) || empty( $row['id'] ) ) {
+				continue;
+			}
+			$rid      = (string) $row['id'];
+			$title    = isset( $row['title'] ) ? (string) $row['title'] : $rid;
+			$abstract = isset( $row['abstract_snippet'] ) ? $this->plain_snippet( (string) $row['abstract_snippet'] ) : '';
+			$href     = UrlBuilder::canonical( $atts['origin'], 'dataset', $rid );
+			$thumb    = $this->dataset_thumb( $catalog->find_in_catalog( $rid ) );
+
+			$cards .= $this->related_card( $href, $title, $thumb, $abstract );
+			++$count;
+			if ( $count >= 12 ) {
+				break;
+			}
+		}
+
+		$heading = $atts['showTitle']
+			? sprintf(
+				'<%1$s class="terraviz-embed__title">%2$s</%1$s>',
+				$atts['heading'],
+				esc_html__( 'Related datasets', 'terraviz' )
+			)
+			: '';
+
+		return sprintf(
+			'<div class="terraviz-embed terraviz-embed--related" data-terraviz="1">%1$s<ul class="terraviz-embed__rail">%2$s</ul></div>',
+			$heading,
+			$cards
+		);
+	}
+
+	/**
+	 * A single related-rail card.
+	 *
+	 * @param string $href          Canonical dataset URL.
+	 * @param string $title         Dataset title.
+	 * @param string $thumb         Thumbnail URL or ''.
+	 * @param string $abstract_text Short plain-text snippet.
+	 */
+	private function related_card( string $href, string $title, string $thumb, string $abstract_text ): string {
+		$img = '';
+		if ( '' !== $thumb ) {
+			$img = sprintf(
+				'<img class="terraviz-embed__card-thumb" src="%s" alt="" loading="lazy" decoding="async" />',
+				esc_url( $thumb )
+			);
+		}
+
+		$abs = '';
+		if ( '' !== $abstract_text ) {
+			$abs = sprintf( '<span class="terraviz-embed__rail-abstract">%s</span>', esc_html( $abstract_text ) );
+		}
+
+		return sprintf(
+			'<li class="terraviz-embed__rail-item"><a href="%1$s" rel="noopener"><span class="terraviz-embed__card">%2$s<span class="terraviz-embed__card-title">%3$s</span></span>%4$s</a></li>',
+			esc_url( $href ),
+			$img,
+			esc_html( $title ),
+			$abs
+		);
+	}
+
+	/**
+	 * Flatten a markdown-ish snippet to a short plain-text string: strip
+	 * `[label](url)` to `label`, drop any other markup, and truncate.
+	 *
+	 * @param string $text Raw snippet.
+	 */
+	private function plain_snippet( string $text ): string {
+		$text = preg_replace( '/\[([^\]]+)\]\([^)]*\)/', '$1', $text );
+		$text = wp_strip_all_tags( (string) $text );
+		$text = trim( preg_replace( '/\s+/', ' ', $text ) );
+
+		return $this->truncate( $text, 140 );
+	}
+
+	/**
+	 * Truncate to a length on a word boundary, adding an ellipsis.
+	 *
+	 * @param string $text  Text.
+	 * @param int    $limit Max characters.
+	 */
+	private function truncate( string $text, int $limit ): string {
+		if ( function_exists( 'mb_strlen' ) ? mb_strlen( $text ) <= $limit : strlen( $text ) <= $limit ) {
+			return $text;
+		}
+
+		$cut = function_exists( 'mb_substr' ) ? mb_substr( $text, 0, $limit ) : substr( $text, 0, $limit );
+		$sp  = strrpos( $cut, ' ' );
+		if ( false !== $sp && $sp > 0 ) {
+			$cut = substr( $cut, 0, $sp );
+		}
+
+		return $cut . '…';
 	}
 
 	/**

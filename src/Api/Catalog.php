@@ -122,6 +122,58 @@ final class Catalog {
 	}
 
 	/**
+	 * Fetch the curated "right now" hero dataset, cached per origin.
+	 *
+	 * Returns the decoded `hero` object (a WireDataset-shaped array) or null
+	 * when the node has no hero configured.
+	 *
+	 * @return array<string,mixed>|null
+	 */
+	public function get_featured_hero(): ?array {
+		$key    = $this->key( 'hero' );
+		$cached = get_transient( $key );
+		if ( is_array( $cached ) ) {
+			return empty( $cached ) ? null : $cached;
+		}
+
+		$data = $this->client->get_json( '/api/v1/featured-hero' );
+		$hero = ( is_array( $data ) && isset( $data['hero'] ) && is_array( $data['hero'] ) ) ? $data['hero'] : null;
+
+		set_transient( $key, null === $hero ? array() : $hero, min( $this->ttl, 5 * MINUTE_IN_SECONDS ) );
+
+		return $hero;
+	}
+
+	/**
+	 * Fetch "more like this" related datasets for an id, cached per origin+id.
+	 *
+	 * Each row is the lightweight related shape (`id`, `title`,
+	 * `abstract_snippet`, `categories`, …), not a full WireDataset.
+	 *
+	 * @param string $id Catalog id.
+	 * @return array<int,array<string,mixed>>
+	 */
+	public function get_related( string $id ): array {
+		$id = trim( $id );
+		if ( '' === $id ) {
+			return array();
+		}
+
+		$key    = $this->key( 'related', $id );
+		$cached = get_transient( $key );
+		if ( is_array( $cached ) ) {
+			return $cached;
+		}
+
+		$data = $this->client->get_json( '/api/v1/datasets/' . rawurlencode( $id ) . '/related' );
+		$rows = ( is_array( $data ) && isset( $data['datasets'] ) && is_array( $data['datasets'] ) ) ? array_values( $data['datasets'] ) : array();
+
+		set_transient( $key, $rows, $this->ttl );
+
+		return $rows;
+	}
+
+	/**
 	 * Find a dataset within the cached catalog by id, slug, or legacyId.
 	 *
 	 * @param string $id Catalog id, slug, or legacy id.

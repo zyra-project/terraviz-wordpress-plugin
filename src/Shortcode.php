@@ -49,6 +49,8 @@ final class Shortcode {
 				'dataset'       => '',
 				'tour'          => '',
 				'catalog'       => '',
+				'hero'          => '',
+				'related'       => '',
 				'origin'        => '',
 				'terrain'       => '',
 				'labels'        => '',
@@ -68,7 +70,7 @@ final class Shortcode {
 			'terraviz'
 		);
 
-		// Determine selector: dataset > tour > catalog (grammar precedence).
+		// Determine selector: dataset > tour > related > catalog > hero.
 		$type = 'dataset';
 		$id   = '';
 		if ( '' !== (string) $atts['dataset'] ) {
@@ -77,8 +79,13 @@ final class Shortcode {
 		} elseif ( '' !== (string) $atts['tour'] ) {
 			$type = 'tour';
 			$id   = (string) $atts['tour'];
+		} elseif ( '' !== (string) $atts['related'] ) {
+			$type = 'related';
+			$id   = (string) $atts['related'];
 		} elseif ( '' !== (string) $atts['catalog'] && ! in_array( strtolower( (string) $atts['catalog'] ), array( 'false', '0', 'no', 'off' ), true ) ) {
 			$type = 'catalog';
+		} elseif ( '' !== (string) $atts['hero'] && ! in_array( strtolower( (string) $atts['hero'] ), array( 'false', '0', 'no', 'off' ), true ) ) {
+			$type = 'hero';
 		}
 
 		$mapped = array(
