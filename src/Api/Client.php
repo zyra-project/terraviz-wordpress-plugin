@@ -80,8 +80,12 @@ final class Client implements JsonReader {
 				'timeout'     => $this->timeout,
 				'redirection' => 2,
 				'headers'     => array(
-					'Accept'     => 'application/json',
-					'User-Agent' => 'TerravizWP/' . TERRAVIZ_VERSION . '; ' . home_url( '/' ),
+					'Accept' => 'application/json',
+					// A version-only UA — deliberately no site URL, to keep the
+					// read path from disclosing the WordPress site's address to
+					// the node. Add one via the `terraviz_request_args` filter
+					// if a node operator asks you to identify your site.
+					'User-Agent' => 'TerravizWP/' . TERRAVIZ_VERSION,
 				),
 			),
 			$url

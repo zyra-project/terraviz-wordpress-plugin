@@ -26,7 +26,7 @@ function terraviz_uninstall_current_site(): void {
 
 	delete_option( 'terraviz_settings' );
 
-	if ( ! isset( $wpdb ) ) {
+	if ( ! isset( $wpdb ) || ! $wpdb instanceof wpdb ) {
 		return;
 	}
 

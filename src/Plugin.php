@@ -86,17 +86,23 @@ final class Plugin {
 	}
 
 	/**
-	 * Version an asset by file mtime in dev, plugin version otherwise, so
-	 * caches bust correctly without a build step.
+	 * Version an asset for cache-busting.
+	 *
+	 * In production the stable plugin version is used, so the asset URL only
+	 * changes on release (and stays identical across every server in a
+	 * multi-server deployment). When `SCRIPT_DEBUG` is on, the file's mtime is
+	 * appended so edits bust the cache during development without a version bump.
 	 *
 	 * @param string $relative Plugin-relative path to the asset.
 	 */
 	private function asset_version( string $relative ): string {
-		$path = TERRAVIZ_PLUGIN_DIR . $relative;
-		if ( is_readable( $path ) ) {
-			$mtime = filemtime( $path );
-			if ( false !== $mtime ) {
-				return TERRAVIZ_VERSION . '.' . (string) $mtime;
+		if ( defined( 'SCRIPT_DEBUG' ) && SCRIPT_DEBUG ) {
+			$path = TERRAVIZ_PLUGIN_DIR . $relative;
+			if ( is_readable( $path ) ) {
+				$mtime = filemtime( $path );
+				if ( false !== $mtime ) {
+					return TERRAVIZ_VERSION . '.' . (string) $mtime;
+				}
 			}
 		}
 

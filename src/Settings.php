@@ -156,6 +156,7 @@ final class Settings {
 		?>
 		<div class="wrap">
 			<h1><?php echo esc_html__( 'Terraviz', 'terraviz' ); ?></h1>
+			<?php settings_errors( 'terraviz' ); ?>
 			<form action="options.php" method="post">
 				<?php
 				settings_fields( self::GROUP );
@@ -223,8 +224,6 @@ final class Settings {
 				'success'
 			);
 		}//end if
-
-		settings_errors( 'terraviz' );
 	}
 
 	/**
