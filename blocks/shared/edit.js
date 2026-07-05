@@ -63,7 +63,7 @@ export function createEdit( { blockName, type, title } ) {
 						'terraviz'
 				  )
 				: __(
-						'Enter a Terraviz dataset ID in the block settings to preview the embed.',
+						'Enter a Terraviz dataset slug or ID in the block settings to preview the embed.',
 						'terraviz'
 				  );
 

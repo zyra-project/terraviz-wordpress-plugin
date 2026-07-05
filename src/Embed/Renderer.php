@@ -10,6 +10,7 @@ declare( strict_types = 1 );
 namespace Terraviz\Embed;
 
 use Terraviz\Api\Catalog;
+use Terraviz\Api\Client;
 use Terraviz\Contract\WireDataset;
 use Terraviz\Support\Options;
 
@@ -33,19 +34,50 @@ final class Renderer {
 	public const HANDLE = 'terraviz-embed';
 
 	/**
-	 * The catalog data source.
+	 * The catalog data source for the default (site-configured) origin.
 	 *
 	 * @var Catalog
 	 */
 	private $catalog;
 
 	/**
+	 * Factory that builds a Catalog for a given origin. Injectable for tests;
+	 * defaults to a live-client-backed Catalog.
+	 *
+	 * @var callable|null
+	 */
+	private $catalog_factory;
+
+	/**
 	 * Construct the renderer.
 	 *
-	 * @param Catalog|null $catalog Data source; built from settings when null.
+	 * @param Catalog|null  $catalog         Default-origin data source; built from settings when null.
+	 * @param callable|null $catalog_factory fn(string $origin): Catalog for per-embed origin overrides.
 	 */
-	public function __construct( ?Catalog $catalog = null ) {
-		$this->catalog = $catalog ?? new Catalog();
+	public function __construct( ?Catalog $catalog = null, ?callable $catalog_factory = null ) {
+		$this->catalog         = $catalog ?? new Catalog();
+		$this->catalog_factory = $catalog_factory;
+	}
+
+	/**
+	 * The catalog to read SSR data from for a given embed origin.
+	 *
+	 * The SSR fallback must come from the *same* node the iframe targets, so a
+	 * per-block/shortcode `origin` override reads titles/abstracts/thumbnails
+	 * from that node — not the site default.
+	 *
+	 * @param string $origin Normalised node origin for this embed.
+	 */
+	private function catalog_for( string $origin ): Catalog {
+		if ( $origin === $this->catalog->origin() ) {
+			return $this->catalog;
+		}
+
+		if ( null !== $this->catalog_factory ) {
+			return ( $this->catalog_factory )( $origin );
+		}
+
+		return new Catalog( new Client( $origin ) );
 	}
 
 	/**
@@ -114,7 +146,7 @@ final class Renderer {
 			return $this->notice( __( 'No Terraviz dataset selected.', 'terraviz' ) );
 		}
 
-		$dataset = $this->catalog->get_dataset( $id );
+		$dataset = $this->catalog_for( $atts['origin'] )->get_dataset( $id );
 		// Accept a human-readable slug or legacyId: resolve to the canonical
 		// catalog id for the URLs the Terraviz app consumes.
 		$selector  = $this->canonical_selector( $dataset, $id );
@@ -144,7 +176,7 @@ final class Renderer {
 			return $this->notice( __( 'No Terraviz tour selected.', 'terraviz' ) );
 		}
 
-		$dataset   = $this->catalog->get_dataset( $id );
+		$dataset   = $this->catalog_for( $atts['origin'] )->get_dataset( $id );
 		$selector  = $this->canonical_selector( $dataset, $id );
 		$embed_url = UrlBuilder::embed( $atts['origin'], 'tour', $selector, $this->flags( $atts ) );
 		$canonical = UrlBuilder::canonical( $atts['origin'], 'tour', $selector );
@@ -167,7 +199,7 @@ final class Renderer {
 	 * @param array<string,mixed> $atts Normalised attributes.
 	 */
 	private function render_catalog( array $atts ): string {
-		$catalog   = $this->catalog->get_catalog();
+		$catalog   = $this->catalog_for( $atts['origin'] )->get_catalog();
 		$embed_url = UrlBuilder::embed( $atts['origin'], 'catalog', '', $this->flags( $atts ) );
 		$canonical = UrlBuilder::canonical( $atts['origin'], 'catalog', '' );
 

@@ -230,4 +230,38 @@ class RendererTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'dataset=INTERNAL_SOS_768', $html );
 		$this->assertStringNotContainsString( 'INTERNAL_SOS_768_LEGACY', $html );
 	}
+
+	public function test_per_embed_origin_fetches_ssr_from_that_node(): void {
+		$node = 'https://noaa.example';
+
+		// The default-origin catalog has NO data; only the override node does.
+		$default      = new Catalog( new FakeReader( self::ORIGIN, array() ), 60 );
+		$node_catalog = new Catalog(
+			new FakeReader( $node, array( '/api/v1/datasets/INTERNAL_SOS_768' => $this->dataset_payload() ) ),
+			60
+		);
+
+		$renderer = new Renderer(
+			$default,
+			static function ( string $origin ) use ( $node, $node_catalog, $default ) {
+				return $origin === $node ? $node_catalog : $default;
+			}
+		);
+
+		$html = $renderer->render(
+			array(
+				'type'   => 'dataset',
+				'id'     => 'INTERNAL_SOS_768',
+				'origin' => $node,
+			)
+		);
+
+		// SSR title/abstract resolved from the override node (not the empty
+		// default catalog, which would only yield the raw id).
+		$this->assertStringContainsString( 'Hurricane Season 2024', $html );
+		// Embed + canonical URLs target the override node.
+		$this->assertStringContainsString( $node . '/dataset/INTERNAL_SOS_768', $html );
+		$this->assertStringContainsString( 'data-terraviz-src="' . $node, $html );
+		$this->assertStringNotContainsString( self::ORIGIN, $html );
+	}
 }

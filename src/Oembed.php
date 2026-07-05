@@ -43,17 +43,17 @@ final class Oembed {
 			array( $this, 'handle_dataset_path' )
 		);
 
-		// Query form: https://<node>/?dataset=<id> .
+		// Query form: https://<node>/?dataset=<id> (the slash before ? is optional).
 		wp_embed_register_handler(
 			'terraviz-dataset-query',
-			'#^https?://' . $h . '/\?[^\#]*\bdataset=([^&\#]+)#i',
+			'#^https?://' . $h . '/?\?[^\#]*\bdataset=([^&\#]+)#i',
 			array( $this, 'handle_dataset_query' )
 		);
 
-		// Query form: https://<node>/?tour=<slug> .
+		// Query form: https://<node>/?tour=<slug> (the slash before ? is optional).
 		wp_embed_register_handler(
 			'terraviz-tour-query',
-			'#^https?://' . $h . '/\?[^\#]*\btour=([^&\#]+)#i',
+			'#^https?://' . $h . '/?\?[^\#]*\btour=([^&\#]+)#i',
 			array( $this, 'handle_tour_query' )
 		);
 	}
