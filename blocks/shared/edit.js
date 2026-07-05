@@ -56,6 +56,17 @@ export function createEdit( { blockName, type, title } ) {
 				? __( 'Tour slug or ID', 'terraviz' )
 				: __( 'Dataset ID', 'terraviz' );
 
+		const placeholderInstructions =
+			type === 'tour'
+				? __(
+						'Enter a Terraviz tour slug or ID in the block settings to preview the embed.',
+						'terraviz'
+				  )
+				: __(
+						'Enter a Terraviz dataset ID in the block settings to preview the embed.',
+						'terraviz'
+				  );
+
 		return (
 			<div { ...blockProps }>
 				<InspectorControls>
@@ -236,10 +247,7 @@ export function createEdit( { blockName, type, title } ) {
 					<Placeholder
 						icon="admin-site-alt3"
 						label={ title }
-						instructions={ __(
-							'Enter a Terraviz dataset ID in the block settings to preview the embed.',
-							'terraviz'
-						) }
+						instructions={ placeholderInstructions }
 					>
 						<ExternalLink href="https://terraviz.zyra-project.org/?catalog=true">
 							{ __( 'Browse the Terraviz catalog', 'terraviz' ) }
