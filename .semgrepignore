@@ -1,0 +1,9 @@
+# Dependencies and build output (not our source).
+vendor/
+node_modules/
+build/
+
+# Generated wire-contract types (regenerated from the served JSON Schema).
+src/Contract/WireDataset.php
+src/Contract/CatalogResponse.php
+src/Contract/WellKnownDoc.php
