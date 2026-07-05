@@ -1,0 +1,56 @@
+name: Semgrep
+
+# Static application security testing for the PHP (and JS) sources.
+# CodeQL has no PHP analyzer, and this plugin's security-sensitive logic is all
+# PHP, so Semgrep is the automated scanner that actually covers it. Findings are
+# uploaded to the repo's Security → Code scanning tab (SARIF); the scan itself is
+# non-blocking to start — promote it to a required check once the baseline is clean.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  semgrep:
+    name: Semgrep scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Semgrep
+        run: pip install --disable-pip-version-check semgrep
+
+      - name: Run Semgrep
+        # p/php: PHP correctness + security; p/security-audit: cross-language
+        # taint/injection/SSRF audit rules; p/secrets: committed credentials.
+        # --metrics off keeps the scan from phoning home (matches the plugin's
+        # own no-telemetry posture).
+        run: >-
+          semgrep scan
+          --config p/php
+          --config p/security-audit
+          --config p/secrets
+          --sarif --output semgrep.sarif
+          --metrics off
+        continue-on-error: true
+
+      - name: Upload SARIF to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
