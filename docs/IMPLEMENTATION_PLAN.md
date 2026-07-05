@@ -52,15 +52,16 @@ Terraviz node, with **no credentials anywhere**.
 | PHP wire types generated from the served `/schema/v1` JSON Schema | ✅ | `bin/generate-contracts.php`, `src/Contract/*` |
 | Human-readable **slug / legacyId** accepted, resolved to canonical id server-side | ✅ | `src/Embed/Renderer.php` (`canonical_selector`) |
 
-### Phase 1 follow-ups (near-term, separate PRs) 🔜
+### Phase 1 follow-ups (near-term, separate PRs)
 
-- **Editor typeahead picker** — search datasets/tours by **title** in the
-  block sidebar, store the id invisibly, offer a "Copy shortcode" button for
-  Classic authors. Needs a small **same-origin REST endpoint** in the plugin
-  over the transient-cached catalog / `GET /api/v1/search`, so the browser
-  never makes a cross-origin call (keeps the "no surprise outbound calls"
-  posture and sidesteps CORS). This is the fuller fix for the ULID-usability
-  problem that slug support already softens.
+- ✅ **Editor typeahead picker** — search datasets/tours by **title** in the
+  block sidebar (`ComboboxControl`), store the id invisibly, with a "Copy
+  shortcode" button for Classic authors. Backed by a **same-origin REST
+  endpoint** (`GET /wp-json/terraviz/v1/search`, `edit_posts`-gated) over the
+  transient-cached catalog — the browser never makes a cross-origin call (keeps
+  the "no surprise outbound calls" posture, sidesteps CORS) and the endpoint
+  reads only the site-configured node, so it is not an SSRF vector.
+  `src/Rest/SearchController.php` + `blocks/shared/edit.js`.
 - **Optional extra blocks** (upstream §3.3): a **right-now hero**
   (`GET /api/v1/featured-hero`) and a **related rail**
   (`GET /api/v1/datasets/:id/related`).

@@ -3,7 +3,9 @@
  *
  * Every block is server-rendered (its markup comes from PHP's shared
  * Renderer), so the editor uses <ServerSideRender> for a true-to-front-end
- * preview and exposes the embed options in the block sidebar.
+ * preview and exposes the embed options in the block sidebar. The Dataset and
+ * Tour blocks get a typeahead picker (search by title via the plugin's
+ * same-origin REST endpoint) so authors never type a raw catalog ULID.
  */
 
 import { __ } from '@wordpress/i18n';
@@ -11,12 +13,138 @@ import { InspectorControls, useBlockProps } from '@wordpress/block-editor';
 import {
 	PanelBody,
 	TextControl,
+	ComboboxControl,
 	ToggleControl,
 	SelectControl,
 	Placeholder,
+	Button,
 	ExternalLink,
 } from '@wordpress/components';
+import { useState, useEffect, useMemo } from '@wordpress/element';
+import { useDebounce, useCopyToClipboard } from '@wordpress/compose';
+import apiFetch from '@wordpress/api-fetch';
+import { addQueryArgs } from '@wordpress/url';
 import ServerSideRender from '@wordpress/server-side-render';
+
+/**
+ * Build the equivalent [terraviz] shortcode for the current attributes, so a
+ * Classic-Editor author can copy it.
+ *
+ * @param {string} type       Embed type.
+ * @param {Object} attributes Block attributes.
+ * @return {string} Shortcode string.
+ */
+function buildShortcode( type, attributes ) {
+	const {
+		id,
+		origin,
+		category,
+		terrain,
+		labels,
+		borders,
+		rotate,
+		chat,
+		layout,
+		aspectRatio,
+	} = attributes;
+
+	const parts = [ 'terraviz' ];
+	if ( type === 'catalog' ) {
+		parts.push( 'catalog="true"' );
+		if ( category ) {
+			parts.push( `category="${ category }"` );
+		}
+	} else {
+		parts.push( `${ type }="${ id || '' }"` );
+	}
+	if ( origin ) {
+		parts.push( `origin="${ origin }"` );
+	}
+	[
+		[ 'terrain', terrain ],
+		[ 'labels', labels ],
+		[ 'borders', borders ],
+		[ 'rotate', rotate ],
+		[ 'chat', chat ],
+	].forEach( ( [ key, on ] ) => {
+		if ( on ) {
+			parts.push( `${ key }="on"` );
+		}
+	} );
+	if ( layout && layout !== 1 ) {
+		parts.push( `layout="${ layout }"` );
+	}
+	if ( aspectRatio ) {
+		parts.push( `aspect="${ aspectRatio }"` );
+	}
+
+	return `[${ parts.join( ' ' ) }]`;
+}
+
+/**
+ * The dataset/tour typeahead picker.
+ *
+ * @param {Object}   props
+ * @param {string}   props.type     'dataset' | 'tour'.
+ * @param {string}   props.label    Field label.
+ * @param {string}   props.value    Current id.
+ * @param {Function} props.onChange Setter for the id.
+ * @return {JSX.Element} The control.
+ */
+function SourcePicker( { type, label, value, onChange } ) {
+	const [ options, setOptions ] = useState( [] );
+
+	const search = ( input ) => {
+		const q = ( input || '' ).trim();
+		apiFetch( { path: addQueryArgs( '/terraviz/v1/search', { q, type } ) } )
+			.then( ( items ) => {
+				const mapped = ( items || [] ).map( ( item ) => ( {
+					value: item.id,
+					label: item.title || item.slug || item.id,
+				} ) );
+				// Let the author use a slug/ID typed as-is even if it isn't a
+				// search hit (paste path), so nothing regresses.
+				if ( q && ! mapped.some( ( o ) => o.value === q ) ) {
+					mapped.push( {
+						value: q,
+						label: `${ __(
+							'Use as entered',
+							'terraviz'
+						) }: ${ q }`,
+					} );
+				}
+				setOptions( mapped );
+			} )
+			.catch( () => {
+				setOptions( q ? [ { value: q, label: q } ] : [] );
+			} );
+	};
+
+	const debouncedSearch = useDebounce( search, 300 );
+
+	// Keep the current value selectable/displayable even before searching.
+	const comboOptions = useMemo( () => {
+		const base = options.slice();
+		if ( value && ! base.some( ( o ) => o.value === value ) ) {
+			base.unshift( { value, label: value } );
+		}
+		return base;
+	}, [ options, value ] );
+
+	return (
+		<ComboboxControl
+			label={ label }
+			value={ value || '' }
+			options={ comboOptions }
+			onFilterValueChange={ ( input ) => debouncedSearch( input ) }
+			onChange={ ( next ) => onChange( next || '' ) }
+			help={ __(
+				'Search by title, or type a slug/ID and pick “Use … as entered”. You can also paste a Terraviz dataset URL directly into the editor.',
+				'terraviz'
+			) }
+		/>
+	);
+}
 
 /**
  * Build an Edit component for a given embed type.
@@ -59,29 +187,33 @@ export function createEdit( { blockName, type, title } ) {
 		const placeholderInstructions =
 			type === 'tour'
 				? __(
-						'Enter a Terraviz tour slug or ID in the block settings to preview the embed.',
+						'Search for a Terraviz tour in the block settings to preview the embed.',
 						'terraviz'
 				  )
 				: __(
-						'Enter a Terraviz dataset slug or ID in the block settings to preview the embed.',
+						'Search for a Terraviz dataset in the block settings to preview the embed.',
 						'terraviz'
 				  );
+
+		const shortcode = buildShortcode( type, attributes );
+		const [ copied, setCopied ] = useState( false );
+		useEffect( () => setCopied( false ), [ shortcode ] );
+		const copyRef = useCopyToClipboard( shortcode, () =>
+			setCopied( true )
+		);
 
 		return (
 			<div { ...blockProps }>
 				<InspectorControls>
 					<PanelBody title={ __( 'Terraviz source', 'terraviz' ) }>
 						{ needsId && (
-							<TextControl
+							<SourcePicker
+								type={ type }
 								label={ selectorLabel }
-								value={ id || '' }
-								onChange={ ( value ) =>
-									setAttributes( { id: value } )
+								value={ id }
+								onChange={ ( next ) =>
+									setAttributes( { id: next } )
 								}
-								help={ __(
-									'A human-readable slug (e.g. hurricane-season-2024) or the catalog ID. Tip: paste a Terraviz dataset URL directly into the editor to auto-embed.',
-									'terraviz'
-								) }
 							/>
 						) }
 						{ type === 'catalog' && (
@@ -111,6 +243,28 @@ export function createEdit( { blockName, type, title } ) {
 								'terraviz'
 							) }
 						/>
+						{ hasSelection && (
+							<p>
+								<Button
+									variant="secondary"
+									ref={ copyRef }
+									disabled={ ! shortcode }
+								>
+									{ copied
+										? __( 'Copied!', 'terraviz' )
+										: __( 'Copy shortcode', 'terraviz' ) }
+								</Button>
+								<code
+									style={ {
+										display: 'block',
+										marginTop: '8px',
+										wordBreak: 'break-all',
+									} }
+								>
+									{ shortcode }
+								</code>
+							</p>
+						) }
 					</PanelBody>
 
 					<PanelBody
