@@ -46,6 +46,11 @@ function buildShortcode( type, attributes ) {
 		chat,
 		layout,
 		aspectRatio,
+		poster,
+		interactive,
+		heading,
+		showTitle,
+		showAbstract,
 	} = attributes;
 
 	const parts = [ 'terraviz' ];
@@ -76,6 +81,23 @@ function buildShortcode( type, attributes ) {
 	}
 	if ( aspectRatio ) {
 		parts.push( `aspect="${ aspectRatio }"` );
+	}
+	// Emit the display options that would otherwise fall back to the renderer's
+	// defaults, so the copied shortcode renders identically to the block.
+	if ( typeof poster === 'boolean' ) {
+		parts.push( `poster="${ poster }"` );
+	}
+	if ( interactive === false ) {
+		parts.push( 'interactive="false"' );
+	}
+	if ( showTitle === false ) {
+		parts.push( 'show_title="false"' );
+	}
+	if ( showAbstract === false ) {
+		parts.push( 'show_abstract="false"' );
+	}
+	if ( heading && heading !== 'h3' ) {
+		parts.push( `heading="${ heading }"` );
 	}
 
 	return `[${ parts.join( ' ' ) }]`;
@@ -138,10 +160,22 @@ function SourcePicker( { type, label, value, onChange } ) {
 			options={ comboOptions }
 			onFilterValueChange={ ( input ) => debouncedSearch( input ) }
 			onChange={ ( next ) => onChange( next || '' ) }
-			help={ __(
-				'Search by title, or type a slug/ID and pick “Use … as entered”. You can also paste a Terraviz dataset URL directly into the editor.',
-				'terraviz'
-			) }
+			help={
+				__(
+					'Search by title, or type a slug/ID and pick “Use … as entered”.',
+					'terraviz'
+				) +
+				' ' +
+				( type === 'tour'
+					? __(
+							'You can also paste a Terraviz tour URL directly into the editor.',
+							'terraviz'
+					  )
+					: __(
+							'You can also paste a Terraviz dataset URL directly into the editor.',
+							'terraviz'
+					  ) )
+			}
 		/>
 	);
 }

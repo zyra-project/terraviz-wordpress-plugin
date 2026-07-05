@@ -85,7 +85,8 @@ final class SearchController {
 	}
 
 	/**
-	 * Only editor users may query the picker.
+	 * Gate the picker to users who can edit posts (Contributor and up) — the
+	 * same capability the block editor itself requires. Not a public endpoint.
 	 */
 	public function can_search(): bool {
 		return current_user_can( 'edit_posts' );
