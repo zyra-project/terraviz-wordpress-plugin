@@ -88,6 +88,8 @@ final class Plugin {
 	/**
 	 * Version an asset by file mtime in dev, plugin version otherwise, so
 	 * caches bust correctly without a build step.
+	 *
+	 * @param string $relative Plugin-relative path to the asset.
 	 */
 	private function asset_version( string $relative ): string {
 		$path = TERRAVIZ_PLUGIN_DIR . $relative;

@@ -10,7 +10,7 @@ declare( strict_types = 1 );
 $tvz_tests_dir = getenv( 'WP_TESTS_DIR' );
 
 if ( ! $tvz_tests_dir ) {
-	$tmp = getenv( 'TMPDIR' ) ? getenv( 'TMPDIR' ) : '/tmp';
+	$tmp           = getenv( 'TMPDIR' ) ? getenv( 'TMPDIR' ) : '/tmp';
 	$tvz_tests_dir = rtrim( $tmp, '/\\' ) . '/wordpress-tests-lib';
 }
 

@@ -20,21 +20,21 @@ class RendererTest extends WP_UnitTestCase {
 
 	private function dataset_payload(): array {
 		return array(
-			'id'             => 'INTERNAL_SOS_768',
-			'slug'           => 'hurricane-season-2024',
-			'title'          => 'Hurricane Season 2024',
-			'format'         => 'video/mp4',
-			'dataLink'       => '/api/v1/datasets/INTERNAL_SOS_768/manifest',
-			'abstractTxt'    => 'A visualization of the 2024 Atlantic hurricane season.',
-			'thumbnailLink'  => 'https://video.zyra-project.org/x/thumbnail.jpg',
-			'tags'           => array( 'Air', 'Water' ),
-			'originNode'     => 'NODE',
-			'originNodeUrl'  => self::ORIGIN,
+			'id'                => 'INTERNAL_SOS_768',
+			'slug'              => 'hurricane-season-2024',
+			'title'             => 'Hurricane Season 2024',
+			'format'            => 'video/mp4',
+			'dataLink'          => '/api/v1/datasets/INTERNAL_SOS_768/manifest',
+			'abstractTxt'       => 'A visualization of the 2024 Atlantic hurricane season.',
+			'thumbnailLink'     => 'https://video.zyra-project.org/x/thumbnail.jpg',
+			'tags'              => array( 'Air', 'Water' ),
+			'originNode'        => 'NODE',
+			'originNodeUrl'     => self::ORIGIN,
 			'originDisplayName' => 'Terraviz',
-			'visibility'     => 'public',
-			'schemaVersion'  => 1,
-			'createdAt'      => '2026-04-30T21:51:55.439Z',
-			'updatedAt'      => '2026-05-13T18:38:16.526Z',
+			'visibility'        => 'public',
+			'schemaVersion'     => 1,
+			'createdAt'         => '2026-04-30T21:51:55.439Z',
+			'updatedAt'         => '2026-05-13T18:38:16.526Z',
 		);
 	}
 
@@ -76,7 +76,12 @@ class RendererTest extends WP_UnitTestCase {
 
 	public function test_view_flags_reach_the_embed_url(): void {
 		$renderer = $this->renderer_with(
-			array( '/api/v1/datasets/x' => array( 'id' => 'x', 'title' => 'X' ) + $this->dataset_payload() )
+			array(
+				'/api/v1/datasets/x' => array(
+					'id'    => 'x',
+					'title' => 'X',
+				) + $this->dataset_payload(),
+			)
 		);
 
 		$html = $renderer->render(
@@ -109,7 +114,12 @@ class RendererTest extends WP_UnitTestCase {
 
 	public function test_empty_id_is_a_notice_not_a_fatal(): void {
 		$renderer = $this->renderer_with( array() );
-		$html     = $renderer->render( array( 'type' => 'dataset', 'id' => '' ) );
+		$html     = $renderer->render(
+			array(
+				'type' => 'dataset',
+				'id'   => '',
+			)
+		);
 
 		$this->assertStringContainsString( 'terraviz-embed--notice', $html );
 		$this->assertStringNotContainsString( 'data-terraviz-src=', $html );
@@ -154,12 +164,17 @@ class RendererTest extends WP_UnitTestCase {
 	}
 
 	public function test_output_is_escaped(): void {
-		$payload           = $this->dataset_payload();
-		$payload['title']  = 'Bad <script>alert(1)</script>';
+		$payload                = $this->dataset_payload();
+		$payload['title']       = 'Bad <script>alert(1)</script>';
 		$payload['abstractTxt'] = 'x " onerror=alert(1) ';
 
 		$renderer = $this->renderer_with( array( '/api/v1/datasets/x' => array( 'id' => 'x' ) + $payload ) );
-		$html     = $renderer->render( array( 'type' => 'dataset', 'id' => 'x' ) );
+		$html     = $renderer->render(
+			array(
+				'type' => 'dataset',
+				'id'   => 'x',
+			)
+		);
 
 		$this->assertStringNotContainsString( '<script>alert(1)</script>', $html );
 		$this->assertStringContainsString( 'Bad &lt;script&gt;', $html );

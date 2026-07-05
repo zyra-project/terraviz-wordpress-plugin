@@ -38,6 +38,8 @@ final class Client implements JsonReader {
 	private $timeout;
 
 	/**
+	 * Construct the client.
+	 *
 	 * @param string $origin  Node origin.
 	 * @param int    $timeout Request timeout in seconds.
 	 */

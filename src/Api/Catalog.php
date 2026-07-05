@@ -31,6 +31,8 @@ final class Catalog {
 	private const PREFIX = 'terraviz_';
 
 	/**
+	 * The read client.
+	 *
 	 * @var JsonReader
 	 */
 	private $client;
@@ -43,6 +45,8 @@ final class Catalog {
 	private $ttl;
 
 	/**
+	 * Construct the catalog reader.
+	 *
 	 * @param JsonReader|null $client Read client; built from settings when null.
 	 * @param int|null        $ttl    Cache TTL; from settings when null.
 	 */
@@ -64,6 +68,8 @@ final class Catalog {
 	 *
 	 * Falls back to scanning the cached catalog when the per-id endpoint is
 	 * unavailable, so a block still SSRs from data we already hold.
+	 *
+	 * @param string $id Catalog id, slug, or legacy id.
 	 */
 	public function get_dataset( string $id ): ?WireDataset {
 		$id = trim( $id );
@@ -117,6 +123,8 @@ final class Catalog {
 
 	/**
 	 * Find a dataset within the cached catalog by id, slug, or legacyId.
+	 *
+	 * @param string $id Catalog id, slug, or legacy id.
 	 */
 	public function find_in_catalog( string $id ): ?WireDataset {
 		$catalog = $this->get_catalog();
@@ -165,6 +173,9 @@ final class Catalog {
 
 	/**
 	 * Build a transient key scoped to the current origin.
+	 *
+	 * @param string $kind  Key namespace (e.g. 'dataset', 'catalog').
+	 * @param string $extra Extra discriminator (e.g. a dataset id).
 	 */
 	private function key( string $kind, string $extra = '' ): string {
 		// Scope by origin so switching nodes never serves stale data, and

@@ -36,21 +36,21 @@ final class Oembed {
 
 		$h = preg_quote( $host, '#' );
 
-		// Canonical path form: https://<node>/dataset/<id>
+		// Canonical path form: https://<node>/dataset/<id> .
 		wp_embed_register_handler(
 			'terraviz-dataset-path',
 			'#^https?://' . $h . '/dataset/([^/?\#]+)#i',
 			array( $this, 'handle_dataset_path' )
 		);
 
-		// Query form: https://<node>/?dataset=<id>
+		// Query form: https://<node>/?dataset=<id> .
 		wp_embed_register_handler(
 			'terraviz-dataset-query',
 			'#^https?://' . $h . '/\?[^\#]*\bdataset=([^&\#]+)#i',
 			array( $this, 'handle_dataset_query' )
 		);
 
-		// Query form: https://<node>/?tour=<slug>
+		// Query form: https://<node>/?tour=<slug> .
 		wp_embed_register_handler(
 			'terraviz-tour-query',
 			'#^https?://' . $h . '/\?[^\#]*\btour=([^&\#]+)#i',
@@ -102,6 +102,8 @@ final class Oembed {
 
 	/**
 	 * Shared dataset render.
+	 *
+	 * @param string $id Dataset id.
 	 */
 	private function render_dataset( string $id ): string {
 		if ( '' === $id ) {

@@ -34,19 +34,19 @@ $source       = $argv[1] ?? $default_base;
  */
 $targets = array(
 	'dataset.schema.json'    => array(
-		'class'   => 'WireDataset',
-		'title'   => 'Terraviz wire Dataset (GET /api/v1/datasets/:id, and each catalog entry).',
-		'wraps'   => array(),
+		'class' => 'WireDataset',
+		'title' => 'Terraviz wire Dataset (GET /api/v1/datasets/:id, and each catalog entry).',
+		'wraps' => array(),
 	),
 	'catalog.schema.json'    => array(
-		'class'   => 'CatalogResponse',
-		'title'   => 'Terraviz catalog envelope (GET /api/v1/catalog).',
-		'wraps'   => array( 'datasets' => 'WireDataset' ),
+		'class' => 'CatalogResponse',
+		'title' => 'Terraviz catalog envelope (GET /api/v1/catalog).',
+		'wraps' => array( 'datasets' => 'WireDataset' ),
 	),
 	'well-known.schema.json' => array(
-		'class'   => 'WellKnownDoc',
-		'title'   => 'Terraviz node discovery document (/.well-known/terraviz.json).',
-		'wraps'   => array(),
+		'class' => 'WellKnownDoc',
+		'title' => 'Terraviz node discovery document (/.well-known/terraviz.json).',
+		'wraps' => array(),
 	),
 );
 

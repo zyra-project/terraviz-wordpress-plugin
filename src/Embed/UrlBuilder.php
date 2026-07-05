@@ -87,6 +87,10 @@ final class UrlBuilder {
 	/**
 	 * The human-facing canonical URL for a selector — used for the SSR
 	 * "View on Terraviz" link and as the crawlable target.
+	 *
+	 * @param string $origin   Node origin (scheme+host).
+	 * @param string $selector One of 'dataset', 'tour', 'catalog'.
+	 * @param string $value    Dataset id / tour slug / '' for catalog.
 	 */
 	public static function canonical( string $origin, string $selector, string $value ): string {
 		$origin = untrailingslashit( $origin );

@@ -98,16 +98,16 @@ define( 'TERRAVIZ_SCHEMA_VERSION', 'v1' );
  * externals" constraint.
  */
 spl_autoload_register(
-	static function ( string $class ): void {
+	static function ( string $class_name ): void {
 		$prefix   = 'Terraviz\\';
 		$base_dir = TERRAVIZ_PLUGIN_DIR . 'src/';
 
 		$len = strlen( $prefix );
-		if ( 0 !== strncmp( $prefix, $class, $len ) ) {
+		if ( 0 !== strncmp( $prefix, $class_name, $len ) ) {
 			return;
 		}
 
-		$relative = substr( $class, $len );
+		$relative = substr( $class_name, $len );
 		$file     = $base_dir . str_replace( '\\', '/', $relative ) . '.php';
 
 		if ( is_readable( $file ) ) {

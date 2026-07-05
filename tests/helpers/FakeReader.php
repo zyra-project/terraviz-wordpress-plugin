@@ -30,8 +30,8 @@ final class FakeReader implements JsonReader {
 	private $responses;
 
 	/**
-	 * @param string                                    $origin    Node origin.
-	 * @param array<string,array<string,mixed>|null>    $responses path => body.
+	 * @param string                                 $origin    Node origin.
+	 * @param array<string,array<string,mixed>|null> $responses path => body.
 	 */
 	public function __construct( string $origin, array $responses = array() ) {
 		$this->origin    = untrailingslashit( $origin );

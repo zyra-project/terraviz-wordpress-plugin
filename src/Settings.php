@@ -222,7 +222,7 @@ final class Settings {
 				),
 				'success'
 			);
-		}
+		}//end if
 
 		settings_errors( 'terraviz' );
 	}

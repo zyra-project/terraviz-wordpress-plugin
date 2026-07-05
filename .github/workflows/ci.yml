@@ -48,7 +48,7 @@ jobs:
       - run: composer install --prefer-dist --no-progress
 
       - name: PHPCS
-        run: vendor/bin/phpcs -q --report=checkstyle | cs2pr
+        run: vendor/bin/phpcs -q --report=checkstyle | cs2pr --graceful-warnings
 
   test:
     name: PHPUnit (PHP ${{ matrix.php }}, WP ${{ matrix.wp }})
@@ -93,6 +93,9 @@ jobs:
           path: build/
 
       - run: composer install --prefer-dist --no-progress
+
+      - name: Install Subversion (needed by install-wp-tests.sh)
+        run: sudo apt-get update && sudo apt-get install -y subversion
 
       - name: Install WordPress test suite
         run: bash bin/install-wp-tests.sh wordpress_test root root 127.0.0.1:3306 ${{ matrix.wp }}

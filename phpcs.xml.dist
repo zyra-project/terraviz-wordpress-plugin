@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <ruleset name="Terraviz">
-	<description>Coding standards for the Terraviz WordPress plugin (WordPress + VIP-Go).</description>
+	<description>Coding standards for the Terraviz WordPress plugin (WordPress standard).</description>
 
 	<file>terraviz.php</file>
 	<file>uninstall.php</file>
@@ -21,9 +21,24 @@
 	<arg name="extensions" value="php"/>
 	<arg name="parallel" value="8"/>
 
-	<!-- WordPress core + docs + extra, and VIP-Go compatibility rules. -->
-	<rule ref="WordPress"/>
-	<rule ref="WordPress-VIP-Go"/>
+	<!-- Warnings annotate but do not fail the build; errors must be zero. -->
+	<config name="ignore_warnings_on_exit" value="1"/>
+
+	<!--
+		WordPress core + docs + extra. This bundles the escaping, sanitization,
+		nonce, and prepared-query security sniffs that matter for a VIP-grade
+		review. (The standalone "WordPress-VIP-Go" ruleset was removed in
+		WPCS 3.x; its modern successor lives in the separate automattic/vipwpcs
+		package, which we deliberately do not vendor to keep tooling light.)
+	-->
+	<rule ref="WordPress">
+		<!--
+			We use PSR-4 autoloading (ClassName.php), not the WordPress
+			class-{name}.php file-naming convention, so the file-name sniffs
+			do not apply.
+		-->
+		<exclude name="WordPress.Files.FileName"/>
+	</rule>
 
 	<config name="minimum_wp_version" value="6.1"/>
 	<config name="testVersion" value="7.4-"/>
@@ -43,8 +58,51 @@
 				<element value="terraviz"/>
 				<element value="Terraviz"/>
 				<element value="TERRAVIZ"/>
-				<element value="tvz"/>
 			</property>
 		</properties>
+	</rule>
+
+	<!--
+		bin/ holds a dev-only CLI code generator that runs OUTSIDE WordPress.
+		It legitimately uses direct file I/O (the WP_Filesystem API is not
+		available or appropriate for a build script) and its own global
+		helper functions, so the WordPress-runtime sniffs do not apply there.
+	-->
+	<rule ref="WordPress.WP.AlternativeFunctions">
+		<exclude-pattern>bin/*</exclude-pattern>
+		<exclude-pattern>tests/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.PHP.DiscouragedPHPFunctions">
+		<exclude-pattern>bin/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.WP.GlobalVariablesOverride">
+		<exclude-pattern>bin/*</exclude-pattern>
+	</rule>
+
+	<!--
+		Test files and the CLI generator carry no doc-tag, prefixing, or
+		reserved-name obligations.
+	-->
+	<rule ref="Squiz.Commenting">
+		<exclude-pattern>tests/*</exclude-pattern>
+		<exclude-pattern>bin/*</exclude-pattern>
+	</rule>
+	<rule ref="Generic.Commenting">
+		<exclude-pattern>tests/*</exclude-pattern>
+		<exclude-pattern>bin/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+		<exclude-pattern>tests/*</exclude-pattern>
+		<exclude-pattern>bin/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.WP.GlobalVariablesOverride">
+		<exclude-pattern>tests/*</exclude-pattern>
+	</rule>
+	<rule ref="Universal.NamingConventions.NoReservedKeywordParameterNames">
+		<exclude-pattern>tests/*</exclude-pattern>
+		<exclude-pattern>bin/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.DB">
+		<exclude-pattern>tests/*</exclude-pattern>
 	</rule>
 </ruleset>

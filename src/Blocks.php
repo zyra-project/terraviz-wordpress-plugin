@@ -57,6 +57,8 @@ final class Blocks {
 	 * Locate a block's metadata directory, preferring the compiled build
 	 * output and falling back to the source (so server rendering and tests
 	 * work even before `npm run build`).
+	 *
+	 * @param string $name Block name without the `terraviz/` namespace.
 	 */
 	private function metadata_dir( string $name ): ?string {
 		$build  = TERRAVIZ_PLUGIN_DIR . 'build/' . $name;
@@ -80,7 +82,7 @@ final class Blocks {
 	 */
 	private function render_callback( string $type ): callable {
 		return static function ( $attributes ) use ( $type ): string {
-			$attributes = is_array( $attributes ) ? $attributes : array();
+			$attributes         = is_array( $attributes ) ? $attributes : array();
 			$attributes['type'] = $type;
 
 			$renderer = new Renderer();

@@ -69,14 +69,14 @@ final class Options {
 	/**
 	 * Fetch one setting.
 	 *
-	 * @param string $key     Setting key.
-	 * @param mixed  $default Fallback when the key is unknown.
+	 * @param string $key      Setting key.
+	 * @param mixed  $fallback Value returned when the key is unknown.
 	 * @return mixed
 	 */
-	public static function get( string $key, $default = null ) {
+	public static function get( string $key, $fallback = null ) {
 		$all = self::all();
 
-		return array_key_exists( $key, $all ) ? $all[ $key ] : $default;
+		return array_key_exists( $key, $all ) ? $all[ $key ] : $fallback;
 	}
 
 	/**
@@ -91,6 +91,8 @@ final class Options {
 	/**
 	 * Normalise an origin to `scheme://host[:port]` with no trailing slash
 	 * or path. Falls back to the canonical origin when the input is unusable.
+	 *
+	 * @param string $origin Raw origin string.
 	 */
 	public static function normalize_origin( string $origin ): string {
 		$origin = trim( $origin );
@@ -136,14 +138,14 @@ final class Options {
 			$out[ $bool ] = ! empty( $input[ $bool ] );
 		}
 
-		$ratio = isset( $input['aspect_ratio'] ) ? (string) $input['aspect_ratio'] : $defaults['aspect_ratio'];
+		$ratio               = isset( $input['aspect_ratio'] ) ? (string) $input['aspect_ratio'] : $defaults['aspect_ratio'];
 		$out['aspect_ratio'] = self::sanitize_aspect_ratio( $ratio );
 
 		$ttl = isset( $input['cache_ttl'] ) ? (int) $input['cache_ttl'] : (int) $defaults['cache_ttl'];
 		// Clamp: at least a minute (avoid hammering the node), at most a day.
 		$out['cache_ttl'] = max( MINUTE_IN_SECONDS, min( DAY_IN_SECONDS, $ttl ) );
 
-		$telemetry = isset( $input['telemetry'] ) ? (string) $input['telemetry'] : $defaults['telemetry'];
+		$telemetry        = isset( $input['telemetry'] ) ? (string) $input['telemetry'] : $defaults['telemetry'];
 		$out['telemetry'] = in_array( $telemetry, array( 'eager', 'lazy' ), true ) ? $telemetry : 'lazy';
 
 		return $out;
@@ -151,6 +153,8 @@ final class Options {
 
 	/**
 	 * Validate an aspect ratio of the form `W:H`; fall back to 16:9.
+	 *
+	 * @param string $ratio Raw aspect-ratio string.
 	 */
 	public static function sanitize_aspect_ratio( string $ratio ): string {
 		$ratio = trim( $ratio );
