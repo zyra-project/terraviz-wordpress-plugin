@@ -114,9 +114,12 @@ final class Renderer {
 			return $this->notice( __( 'No Terraviz dataset selected.', 'terraviz' ) );
 		}
 
-		$dataset   = $this->catalog->get_dataset( $id );
-		$embed_url = UrlBuilder::embed( $atts['origin'], 'dataset', $id, $this->flags( $atts ) );
-		$canonical = UrlBuilder::canonical( $atts['origin'], 'dataset', $id );
+		$dataset = $this->catalog->get_dataset( $id );
+		// Accept a human-readable slug or legacyId: resolve to the canonical
+		// catalog id for the URLs the Terraviz app consumes.
+		$selector  = $this->canonical_selector( $dataset, $id );
+		$embed_url = UrlBuilder::embed( $atts['origin'], 'dataset', $selector, $this->flags( $atts ) );
+		$canonical = UrlBuilder::canonical( $atts['origin'], 'dataset', $selector );
 
 		return $this->frame(
 			$atts,
@@ -142,8 +145,9 @@ final class Renderer {
 		}
 
 		$dataset   = $this->catalog->get_dataset( $id );
-		$embed_url = UrlBuilder::embed( $atts['origin'], 'tour', $id, $this->flags( $atts ) );
-		$canonical = UrlBuilder::canonical( $atts['origin'], 'tour', $id );
+		$selector  = $this->canonical_selector( $dataset, $id );
+		$embed_url = UrlBuilder::embed( $atts['origin'], 'tour', $selector, $this->flags( $atts ) );
+		$canonical = UrlBuilder::canonical( $atts['origin'], 'tour', $selector );
 
 		return $this->frame(
 			$atts,
@@ -428,6 +432,29 @@ final class Renderer {
 			'layout'   => $atts['layout'],
 			'category' => $atts['category'],
 		);
+	}
+
+	/**
+	 * The value to place in the embed / canonical URL for a selector.
+	 *
+	 * Authors may supply a human-readable slug or a legacyId; when the catalog
+	 * resolves the row we substitute its canonical catalog id (the shape the
+	 * Terraviz app reliably deep-links on). When the catalog is unreachable we
+	 * pass the author's value through unchanged (it already works if it was an
+	 * id, and degrades gracefully otherwise).
+	 *
+	 * @param WireDataset|null $dataset The resolved dataset, if any.
+	 * @param string           $raw     The author-supplied selector.
+	 */
+	private function canonical_selector( ?WireDataset $dataset, string $raw ): string {
+		if ( $dataset ) {
+			$id = (string) $dataset->get( 'id', '' );
+			if ( '' !== $id ) {
+				return $id;
+			}
+		}
+
+		return $raw;
 	}
 
 	/**

@@ -56,9 +56,11 @@ Yes — set the node origin in **Settings → Terraviz**, or override it per blo
 
 == Shortcode ==
 
-`[terraviz dataset="INTERNAL_SOS_768" terrain="on" rotate="on"]`
+`[terraviz dataset="hurricane-season-2024" terrain="on" rotate="on"]`
 `[terraviz tour="climate-futures"]`
 `[terraviz catalog="true"]`
+
+The `dataset` and `tour` attributes accept a human-readable **slug** (e.g. `hurricane-season-2024`), a legacy id, or the canonical catalog id — you don't need to copy the long random id. You can also paste a Terraviz dataset/tour URL on its own line to auto-embed it.
 
 Attributes: `dataset`, `tour`, `catalog`, `origin`, `terrain`, `labels`, `borders`, `rotate`, `chat`, `layout` (1|2|4), `aspect` (e.g. `16:9`), `poster`, `interactive`, `heading` (h2–h6), `show_title`, `show_abstract`.
 
@@ -68,6 +70,7 @@ Attributes: `dataset`, `tour`, `catalog`, `origin`, `terrain`, `labels`, `border
 * Initial release — Phase 1 zero-credential embeds.
 * Dataset, Tour, and Catalog blocks with server-side rendered, accessible fallbacks and lazy iframe loading.
 * `[terraviz]` shortcode and automatic URL embeds sharing one renderer.
+* Accepts a human-readable dataset/tour slug (or legacy id), resolved to the canonical id — no need to type the long random id.
 * Settings screen: node origin, default embed options, loading/telemetry posture.
 * Catalog/dataset caching in transients.
 * PHP wire-contract types generated from Terraviz's published `/schema/v1` JSON Schema.

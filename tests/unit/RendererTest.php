@@ -179,4 +179,55 @@ class RendererTest extends WP_UnitTestCase {
 		$this->assertStringNotContainsString( '<script>alert(1)</script>', $html );
 		$this->assertStringContainsString( 'Bad &lt;script&gt;', $html );
 	}
+
+	public function test_slug_is_resolved_to_canonical_id(): void {
+		// Author supplies the human-readable slug; only the catalog endpoint
+		// is available (the per-id endpoint 404s for a slug), so resolution
+		// happens via the catalog scan.
+		$catalog_body = array(
+			'schema_version' => 1,
+			'generated_at'   => '2026-07-04T00:00:00Z',
+			'etag'           => '"x"',
+			'cursor'         => null,
+			'datasets'       => array( $this->dataset_payload() ),
+			'tombstones'     => array(),
+		);
+
+		$renderer = $this->renderer_with( array( '/api/v1/catalog' => $catalog_body ) );
+		$html     = $renderer->render(
+			array(
+				'type' => 'dataset',
+				'id'   => 'hurricane-season-2024', // the slug, not the id.
+			)
+		);
+
+		// The embed + canonical URLs carry the canonical id, not the slug.
+		$this->assertStringContainsString( 'dataset=INTERNAL_SOS_768', $html );
+		$this->assertStringContainsString( self::ORIGIN . '/dataset/INTERNAL_SOS_768', $html );
+		$this->assertStringNotContainsString( 'dataset=hurricane-season-2024', $html );
+		// And the title still resolves for the SSR fallback.
+		$this->assertStringContainsString( 'Hurricane Season 2024', $html );
+	}
+
+	public function test_legacy_id_is_resolved_to_canonical_id(): void {
+		$catalog_body = array(
+			'schema_version' => 1,
+			'generated_at'   => '2026-07-04T00:00:00Z',
+			'etag'           => '"x"',
+			'cursor'         => null,
+			'datasets'       => array( $this->dataset_payload() + array( 'legacyId' => 'INTERNAL_SOS_768_LEGACY' ) ),
+			'tombstones'     => array(),
+		);
+
+		$renderer = $this->renderer_with( array( '/api/v1/catalog' => $catalog_body ) );
+		$html     = $renderer->render(
+			array(
+				'type' => 'dataset',
+				'id'   => 'INTERNAL_SOS_768_LEGACY',
+			)
+		);
+
+		$this->assertStringContainsString( 'dataset=INTERNAL_SOS_768', $html );
+		$this->assertStringNotContainsString( 'INTERNAL_SOS_768_LEGACY', $html );
+	}
 }

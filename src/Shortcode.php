@@ -20,8 +20,11 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Gutenberg leads; this is the compatibility fallback for Classic Editor and
  * older gov installs (WordPress Integration Plan §3.4).
  *
+ * The dataset/tour attribute accepts a human-readable slug, a legacy id, or the
+ * canonical catalog id — the plugin resolves any of them to the canonical id.
+ *
  * Examples:
- *   [terraviz dataset="INTERNAL_SOS_768" terrain="on" rotate="on"]
+ *   [terraviz dataset="hurricane-season-2024" terrain="on" rotate="on"]
  *   [terraviz tour="climate-futures"]
  *   [terraviz catalog="true"]
  */

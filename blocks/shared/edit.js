@@ -54,7 +54,7 @@ export function createEdit( { blockName, type, title } ) {
 		const selectorLabel =
 			type === 'tour'
 				? __( 'Tour slug or ID', 'terraviz' )
-				: __( 'Dataset ID', 'terraviz' );
+				: __( 'Dataset slug or ID', 'terraviz' );
 
 		const placeholderInstructions =
 			type === 'tour'
@@ -79,7 +79,7 @@ export function createEdit( { blockName, type, title } ) {
 									setAttributes( { id: value } )
 								}
 								help={ __(
-									'The catalog ID (e.g. INTERNAL_SOS_768) or slug.',
+									'A human-readable slug (e.g. hurricane-season-2024) or the catalog ID. Tip: paste a Terraviz dataset URL directly into the editor to auto-embed.',
 									'terraviz'
 								) }
 							/>
