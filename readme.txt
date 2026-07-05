@@ -73,6 +73,7 @@ Attributes: `dataset`, `tour`, `catalog`, `origin`, `terrain`, `labels`, `border
 * Dataset, Tour, and Catalog blocks with server-side rendered, accessible fallbacks and lazy iframe loading.
 * `[terraviz]` shortcode and automatic URL embeds sharing one renderer.
 * Accepts a human-readable dataset/tour slug (or legacy id), resolved to the canonical id — no need to type the long random id.
+* Block-editor typeahead: search datasets and tours by title and pick one; a "Copy shortcode" button helps Classic-Editor authors.
 * Settings screen: node origin, default embed options, loading/telemetry posture.
 * Catalog/dataset caching in transients.
 * PHP wire-contract types generated from Terraviz's published `/schema/v1` JSON Schema.

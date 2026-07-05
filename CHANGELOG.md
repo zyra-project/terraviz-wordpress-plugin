@@ -19,6 +19,9 @@ Phase 1 — the zero-credential embed plugin.
 - Catalog and dataset caching in WordPress transients.
 - PHP wire-contract value objects generated from Terraviz's published
   `/schema/v1` JSON Schema via `bin/generate-contracts.php`.
+- Block-editor typeahead picker: search datasets/tours by title (backed by a
+  same-origin, `edit_posts`-gated REST endpoint over the cached catalog), store
+  the id automatically, with a "Copy shortcode" button for Classic authors.
 - PHPUnit unit tests and a CI smoke test that hits the canonical node's public
   API and asserts a block renders.
 

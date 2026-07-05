@@ -53,6 +53,7 @@ final class Plugin {
 		add_action( 'init', array( new Blocks(), 'register' ) );
 		add_action( 'init', array( new Shortcode(), 'register' ) );
 		add_action( 'init', array( new Oembed(), 'register' ) );
+		add_action( 'rest_api_init', array( new Rest\SearchController(), 'register' ) );
 
 		if ( is_admin() ) {
 			$settings = new Settings();
