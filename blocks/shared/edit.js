@@ -20,7 +20,7 @@ import {
 	Button,
 	ExternalLink,
 } from '@wordpress/components';
-import { useState, useEffect, useMemo } from '@wordpress/element';
+import { useState, useEffect, useMemo, useRef } from '@wordpress/element';
 import { useDebounce, useCopyToClipboard } from '@wordpress/compose';
 import apiFetch from '@wordpress/api-fetch';
 import { addQueryArgs } from '@wordpress/url';
@@ -115,11 +115,18 @@ function buildShortcode( type, attributes ) {
  */
 function SourcePicker( { type, label, value, onChange } ) {
 	const [ options, setOptions ] = useState( [] );
+	// Sequence the async searches: a slow earlier response must not clobber a
+	// newer one, so only the latest request is allowed to update state.
+	const latestRequest = useRef( 0 );
 
 	const search = ( input ) => {
 		const q = ( input || '' ).trim();
+		const requestId = ++latestRequest.current;
 		apiFetch( { path: addQueryArgs( '/terraviz/v1/search', { q, type } ) } )
 			.then( ( items ) => {
+				if ( requestId !== latestRequest.current ) {
+					return;
+				}
 				const mapped = ( items || [] ).map( ( item ) => ( {
 					value: item.id,
 					label: item.title || item.slug || item.id,
@@ -138,6 +145,9 @@ function SourcePicker( { type, label, value, onChange } ) {
 				setOptions( mapped );
 			} )
 			.catch( () => {
+				if ( requestId !== latestRequest.current ) {
+					return;
+				}
 				setOptions( q ? [ { value: q, label: q } ] : [] );
 			} );
 	};
