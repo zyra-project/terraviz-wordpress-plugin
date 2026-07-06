@@ -619,5 +619,52 @@ final class Settings {
 			'<p class="description">%s</p>',
 			esc_html__( 'A Cloudflare Access service token (a Client ID + Client Secret pair) that authenticates the publisher path. The secret is encrypted at rest and never sent to the browser. After you save it, use the “Verify credential” button below to confirm it works.', 'terraviz' )
 		);
+
+		$this->render_token_help();
+	}
+
+	/**
+	 * Explain how a new user obtains a service token. Publishing needs one;
+	 * embedding does not. The token is a Cloudflare Access credential issued by
+	 * the node's administrator, so the path differs for the public node (request
+	 * it and wait for approval) vs a self-hosted node (the node admin mints it in
+	 * Cloudflare Access and hands over the Client ID + Secret).
+	 */
+	private function render_token_help(): void {
+		$origin = Options::origin();
+
+		echo '<div style="max-width:40em;margin-top:1em;padding:12px 16px;border:1px solid #dcdcde;border-radius:4px;background:#fff;">';
+
+		echo '<p style="margin-top:0;"><strong>' . esc_html__( 'Do I need a token?', 'terraviz' ) . '</strong> ' .
+			esc_html__( 'Only to publish. Embedding Terraviz globes — with blocks, the [terraviz] shortcode, or a pasted Terraviz URL — is public and read-only and needs no token or account.', 'terraviz' ) . '</p>';
+
+		echo '<p><strong>' . esc_html__( 'Getting a token', 'terraviz' ) . '</strong> ' .
+			esc_html__( 'A service token is a Cloudflare Access credential issued by the Terraviz node\'s administrator — you cannot generate one yourself for a node you do not run. How you obtain one depends on the node you publish to:', 'terraviz' ) . '</p>';
+
+		echo '<ul style="list-style:disc;margin-left:1.5em;">';
+
+		printf(
+			'<li>%s</li>',
+			wp_kses_post(
+				sprintf(
+					/* translators: %s: the configured Terraviz node origin, e.g. https://terraviz.zyra-project.org. */
+					__( '<strong>The public canonical node</strong> (%s): publishing there is invite-based, so many sites will only ever embed. To publish, request a service token from the node operator; until your account is approved on the node, “Verify credential” reports a <em>pending</em> status. Paste the Client ID and Secret they provide into the fields above.', 'terraviz' ),
+					'<code>' . esc_html( $origin ) . '</code>'
+				)
+			)
+		);
+
+		echo '<li>' . wp_kses_post( __( '<strong>A self-hosted node:</strong> the token must be created by whoever administers that node (possibly you). Ask them to complete these steps and hand you the resulting pair:', 'terraviz' ) ) . '</li>';
+
+		echo '</ul>';
+
+		echo '<ol style="margin-left:1.5em;">';
+		echo '<li>' . wp_kses_post( __( 'In the node’s Cloudflare <strong>Zero Trust</strong> dashboard, open <strong>Access → Service Auth → Service Tokens</strong> and create a service token. Cloudflare shows a <strong>Client ID</strong> (ending in <code>.access</code>) and a <strong>Client Secret</strong> once — copy both then.', 'terraviz' ) ) . '</li>';
+		echo '<li>' . wp_kses_post( __( 'Authorize that token on the Cloudflare Access policy protecting the node’s publish API — a rule whose action is <em>Service Auth</em>. The node’s <code>SELF_HOSTING</code> documentation names the exact Access application and hostname.', 'terraviz' ) ) . '</li>';
+		echo '</ol>';
+
+		echo '<p style="margin-bottom:0;">' . esc_html__( 'Then paste the Client ID and Secret above, save, and use “Verify credential” to confirm.', 'terraviz' ) . '</p>';
+
+		echo '</div>';
 	}
 }
