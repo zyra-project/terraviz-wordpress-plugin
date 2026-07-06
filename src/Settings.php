@@ -659,9 +659,11 @@ final class Settings {
 		echo '</ul>';
 
 		echo '<ol style="margin-left:1.5em;">';
-		echo '<li>' . wp_kses_post( __( 'In the node’s Cloudflare <strong>Zero Trust</strong> dashboard, open <strong>Access → Service Auth → Service Tokens</strong> and create a service token. Cloudflare shows a <strong>Client ID</strong> (ending in <code>.access</code>) and a <strong>Client Secret</strong> once — copy both then.', 'terraviz' ) ) . '</li>';
-		echo '<li>' . wp_kses_post( __( 'Authorize that token on the Cloudflare Access policy protecting the node’s publish API — a rule whose action is <em>Service Auth</em>. The node’s <code>SELF_HOSTING</code> documentation names the exact Access application and hostname.', 'terraviz' ) ) . '</li>';
+		echo '<li>' . wp_kses_post( __( 'In the node’s Cloudflare <strong>Zero Trust</strong> dashboard, open <strong>Access → Service Auth → Service Tokens</strong> and create a service token. Cloudflare shows a <strong>Client ID</strong> (ending in <code>.access</code>) and a <strong>Client Secret</strong> once — copy both then. A service token has no permissions of its own; its reach is set by the policy in the next step.', 'terraviz' ) ) . '</li>';
+		echo '<li>' . wp_kses_post( __( 'Add the token to the Cloudflare Access application that protects the node’s <strong>publish API</strong> (the <code>/api/v1/publish/**</code> endpoints) as a <em>Service Auth</em> include. The node’s <code>SELF_HOSTING</code> guide covers the exact application and hostname.', 'terraviz' ) ) . '</li>';
 		echo '</ol>';
+
+		echo '<p>' . wp_kses_post( __( '<strong>What the token can do:</strong> on the node it acts as the shared <code>service</code> role — it may manage catalog <em>content</em> (create, edit, publish, retract and delete datasets, and upload assets) but is <strong>not</strong> a node administrator and cannot manage users. Which WordPress users may trigger which action is enforced separately, in WordPress.', 'terraviz' ) ) . '</p>';
 
 		echo '<p style="margin-bottom:0;">' . esc_html__( 'Then paste the Client ID and Secret above, save, and use “Verify credential” to confirm.', 'terraviz' ) . '</p>';
 
