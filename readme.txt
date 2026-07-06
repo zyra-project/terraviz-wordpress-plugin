@@ -12,22 +12,39 @@ Embed live Terraviz "Science On a Sphere" globes — a single dataset, a tour, o
 
 == Description ==
 
-Terraviz visualizes NOAA "Science On a Sphere" datasets on an interactive 3D globe. This plugin lets a WordPress site drop a live Terraviz globe into any page or post using Gutenberg blocks or a shortcode.
+Terraviz visualizes NOAA "Science On a Sphere" datasets on an interactive 3D globe. This plugin lets a WordPress site **embed** live Terraviz globes into any page or post, and — optionally — **publish and manage** Terraviz datasets from wp-admin.
 
-It is a **host-side adapter**, not a reimplementation: the globe runs inside an iframe served from a Terraviz node, and the plugin talks only to Terraviz's public, versioned HTTP APIs. There are **no credentials** — the embed/read path is entirely public.
+It is a **host-side adapter**, not a reimplementation: the globe runs inside an iframe served from a Terraviz node, and the plugin talks only to Terraviz's public, versioned HTTP APIs. **Embedding is entirely public and needs no account.** Publishing is an optional, administrator-configured capability that authenticates to a Terraviz node with a service token kept server-side — see *External services & privacy* below.
 
-**What it does**
+**Embed (no credentials required)**
 
 * Five Gutenberg blocks: **Dataset**, **Tour**, **Catalog**, **Right-Now Hero** (the node's featured dataset), and **Related Datasets** (a "more like this" rail).
 * A `[terraviz]` shortcode for the Classic Editor, sharing the same renderer as the blocks.
 * Automatic embeds when you paste a Terraviz dataset or tour URL.
 * A **server-side rendered fallback** under every embed — real title, abstract, thumbnail, and a link — so the content is indexable by search engines, visible without JavaScript, and accessible to screen readers.
 * **Lazy loading**: the heavy globe only loads when scrolled into view, or on click via a poster, so a page with several embeds stays fast.
-* A settings screen to choose which Terraviz node embeds point at (default: the canonical public node), set default view options, and control the loading/telemetry posture.
 
-**Privacy & self-containment**
+**Publish (optional, requires a service token)**
 
-The plugin makes no surprise outbound calls. Its only network requests are to the configured Terraviz node's **public catalog API**, used to render the server-side fallback, cached in WordPress transients. The interactive globe loads directly from the Terraviz node in the visitor's browser — nothing is proxied through your site — and carries that node's own telemetry. No external assets are bundled or fetched from third parties.
+* A **Publisher dashboard** in wp-admin: list datasets by lifecycle state (draft, published, retracted), create and edit drafts, and publish, retract, or delete them.
+* **Asset upload** for dataset media, sent directly from the browser to the node's storage via short-lived presigned URLs.
+* **WordPress-native authorization**: what a user may do maps from their WordPress role — authors draft, editors publish, administrators configure. Every Terraviz write is proxied through PHP under a single shared node credential; the token never reaches the browser.
+* Because writes share one node-scoped "service" identity, Terraviz attributes every action to that identity rather than the individual WordPress user, and the dashboard makes this explicit.
+
+A settings screen (**Settings → Terraviz**) chooses which Terraviz node embeds point at (default: the canonical public node), sets default view options, controls the loading/telemetry posture, and stores the optional publishing service token.
+
+**External services & privacy**
+
+This plugin communicates with a **Terraviz node** — a third-party service, by default `https://terraviz.zyra-project.org`, which a site operator can change in the settings or per block. It is not operated by WordPress.org. What is sent, and when:
+
+* **Reading catalog data (server-side).** To render each embed's fallback, WordPress fetches public, read-only catalog data from the node (dataset titles, abstracts, thumbnails, related/featured lists) and caches it in WordPress transients. These are GET requests; no personal data is sent.
+* **Loading the interactive globe (visitor's browser).** The globe loads in an iframe served directly from the node in each visitor's browser — nothing is proxied through your site. The node, not this plugin, governs that frame and any telemetry it carries; account for it as you would any embedded third-party iframe in your own privacy policy.
+* **Publishing (server-side, only when configured).** If an administrator has stored a publishing service token and a permitted user acts in the Publisher dashboard, the dataset fields you enter and your lifecycle actions (create, update, publish, retract, delete) are sent from PHP to the node's publish API. That API sits behind **Cloudflare Access**; the plugin attaches a Cloudflare Access service token (a client id + client secret) as request headers on the server. The secret is encrypted at rest and is never sent to the browser.
+* **Uploading assets (browser → storage).** When you upload dataset media, the file is hashed in your browser and its bytes are uploaded **directly from your browser to the node's Cloudflare R2 storage** through a short-lived presigned URL the plugin obtains server-side. The plugin proxies only small init/complete metadata; the service token is never exposed to the browser.
+
+No third-party assets are bundled or loaded from CDNs, and the plugin makes no other outbound calls.
+
+Using a Terraviz node is subject to that node's terms and privacy policy — Terms of service: [ADD TERRAVIZ TOS URL] · Privacy policy: [ADD TERRAVIZ PRIVACY URL]. For the default node, see https://terraviz.zyra-project.org.
 
 == Installation ==
 
@@ -38,9 +55,25 @@ The plugin makes no surprise outbound calls. Its only network requests are to th
 
 == Frequently Asked Questions ==
 
-= Do I need an account or API key? =
+= Do I need an account or API key to embed globes? =
 
-No. Embedding is entirely public — every block, shortcode, and URL embed works with no credentials. The settings screen has an optional, inert "service token" slot that is groundwork for a future publishing release; it does nothing yet (there is no publish path) and can be ignored. Nothing on the public embed path ever uses a credential.
+No. Every block, shortcode, and URL embed works with no credentials — embedding only reads public data and loads a public iframe.
+
+= How do I publish or manage datasets? =
+
+Publishing is optional. An administrator stores a Terraviz **service token** under **Settings → Terraviz**, after which the **Terraviz** menu in wp-admin opens a Publisher dashboard where permitted users can create, edit, publish, retract, and delete datasets and upload their media. With no token stored, the dashboard is inert and reports that a credential is not configured.
+
+= Who is allowed to publish? =
+
+Authorization is enforced in WordPress and maps from each user's role: administrators configure the node and token and can do everything; editors can create, edit, publish, and retract; authors can create and edit drafts; contributors and subscribers can embed blocks only. Because every write is proxied under one shared node credential, Terraviz attributes all actions to a single "service" identity — the dashboard shows this.
+
+= How is the service token stored? =
+
+In its own WordPress option, separate from the general settings, and never exposed through the REST API or returned to the browser. The client id is stored in the clear (it is only semi-secret); the client **secret** is encrypted at rest with authenticated encryption (libsodium secretbox, or OpenSSL AES-256-GCM as a fallback), keyed to your site's WordPress salts so the ciphertext does not travel with a database dump. If neither crypto library is available, the plugin refuses to store the secret rather than keep it in the clear. Rotating your WordPress salts invalidates a stored secret, which must then be re-entered.
+
+= Uploading a dataset asset fails with a CORS or network error =
+
+Asset bytes upload directly from your browser to the Terraviz node's object storage, which is a cross-origin request, so the node operator must allow your WordPress site's origin in the storage bucket's CORS policy. Uploads also require a secure (HTTPS) context, because the browser hashes the file before uploading.
 
 = Where does the globe load from? =
 
