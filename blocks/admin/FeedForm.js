@@ -15,6 +15,7 @@ import {
 	ExternalLink,
 } from '@wordpress/components';
 import { createFeed, updateFeed, previewFeed, normalizeError } from './api';
+import { safeHttpUrl } from './safeUrl';
 
 const KINDS = [
 	{ label: 'RSS', value: 'rss' },
@@ -213,17 +214,22 @@ export default function FeedForm( { feed, onSaved, onCancel } ) {
 						{ Array.isArray( preview.items ) &&
 							preview.items.length > 0 && (
 								<ul style={ { margin: '0 0 0 18px' } }>
-									{ preview.items.map( ( item, i ) => (
-										<li key={ i }>
-											{ item.url ? (
-												<ExternalLink href={ item.url }>
-													{ item.title || item.url }
-												</ExternalLink>
-											) : (
-												item.title || '—'
-											) }
-										</li>
-									) ) }
+									{ preview.items.map( ( item, i ) => {
+										const href = safeHttpUrl( item.url );
+										return (
+											<li key={ i }>
+												{ href ? (
+													<ExternalLink href={ href }>
+														{ item.title || href }
+													</ExternalLink>
+												) : (
+													item.title ||
+													item.url ||
+													'—'
+												) }
+											</li>
+										);
+									} ) }
 								</ul>
 							) }
 					</div>

@@ -16,6 +16,7 @@ import {
 	ToggleControl,
 } from '@wordpress/components';
 import { reviewEvent, normalizeError } from './api';
+import { safeHttpUrl } from './safeUrl';
 
 function initialEdits( ev ) {
 	const geo = ev.geometry || {};
@@ -69,6 +70,8 @@ export default function EventReview( { event, onReviewed, onCancel } ) {
 	const [ notice, setNotice ] = useState( null );
 
 	const suggested = Array.isArray( event.links ) ? event.links : [];
+	const source = event.source || {};
+	const sourceHref = safeHttpUrl( source.url );
 	const set = ( key ) => ( value ) =>
 		setEdits( { ...edits, [ key ]: value } );
 	const fieldError = ( name ) => {
@@ -138,11 +141,15 @@ export default function EventReview( { event, onReviewed, onCancel } ) {
 				<strong>{ event.title || event.id }</strong>
 				{ event.status ? ` — ${ event.status }` : '' }
 			</p>
-			{ event.source && event.source.url && (
+			{ source.url && (
 				<p>
-					<ExternalLink href={ event.source.url }>
-						{ event.source.name || event.source.url }
-					</ExternalLink>
+					{ sourceHref ? (
+						<ExternalLink href={ sourceHref }>
+							{ source.name || source.url }
+						</ExternalLink>
+					) : (
+						source.name || source.url
+					) }
 				</p>
 			) }
 			{ event.summary && <p>{ event.summary }</p> }
