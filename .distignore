@@ -1,0 +1,48 @@
+# .distignore — files excluded from the distributable plugin ZIP.
+#
+# Exclusion-based, mirroring the WordPress.org / 10up convention: everything
+# NOT listed here ships in the package. Consumed by `bin/build-zip.sh` (via
+# `rsync --exclude-from`) and reused as-is by a future WordPress.org SVN deploy.
+#
+# Ships (because not excluded): terraviz.php, uninstall.php, readme.txt, LICENSE,
+# src/, blocks/ (fallback source), build/ (compiled blocks), assets/.
+
+# VCS / CI / project meta
+.git
+.github
+.gitignore
+.distignore
+.semgrepignore
+
+# Dev tooling & configs
+bin
+tests
+docs
+composer.json
+composer.lock
+package.json
+package-lock.json
+phpcs.xml.dist
+phpunit.xml.dist
+.wp-env.json
+.wp-env.override.json
+
+# Human/dev docs (readme.txt is the WordPress-facing one and DOES ship)
+CLAUDE.md
+README.md
+CHANGELOG.md
+
+# Dependencies / build byproducts
+node_modules
+vendor
+coverage
+.phpunit.result.cache
+.phpunit.cache
+
+# Packaging output
+dist
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.log

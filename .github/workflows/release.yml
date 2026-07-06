@@ -1,0 +1,67 @@
+name: Release
+
+# Cut a versioned GitHub Release with the installable plugin ZIP attached.
+#
+# Push a tag like `v0.1.0` (which must match the version in terraviz.php /
+# readme.txt / package.json / blocks) and this builds the blocks, packages the
+# ZIP, and publishes a Release with the archive as a download. `workflow_dispatch`
+# lets you dry-run the build without creating a Release.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & publish plugin ZIP
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Check version consistency
+        run: bash bin/check-version.sh
+
+      - name: Assert tag matches plugin version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          file_version="$(sed -n 's/^[[:space:]]*\*[[:space:]]*Version:[[:space:]]*\([0-9][^[:space:]]*\).*/\1/p' terraviz.php | head -n1)"
+          if [ "$tag_version" != "$file_version" ]; then
+            echo "Tag $GITHUB_REF_NAME (=$tag_version) does not match plugin version $file_version." >&2
+            exit 1
+          fi
+          echo "Tag matches plugin version $file_version."
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Package installable plugin ZIP
+        run: bash bin/build-zip.sh
+
+      - name: Upload plugin ZIP (run artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraviz-plugin-zip
+          path: dist/terraviz-*.zip
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/terraviz-*.zip
+          generate_release_notes: true

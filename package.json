@@ -19,6 +19,8 @@
 	},
 	"scripts": {
 		"build": "wp-scripts build --webpack-src-dir=blocks",
+		"package": "npm run build && bash bin/build-zip.sh",
+		"check:version": "bash bin/check-version.sh",
 		"start": "wp-scripts start --webpack-src-dir=blocks",
 		"format": "wp-scripts format ./blocks",
 		"lint:js": "wp-scripts lint-js ./blocks",
