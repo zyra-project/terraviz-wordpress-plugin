@@ -8,7 +8,7 @@ Stable tag: 0.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Embed live Terraviz "Science On a Sphere" globes — a single dataset, a tour, or the full catalog — into WordPress pages and posts.
+Embed live Terraviz "Science On a Sphere" globes into WordPress, and optionally publish and manage Terraviz datasets from wp-admin.
 
 == Description ==
 
