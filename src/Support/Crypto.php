@@ -73,8 +73,13 @@ final class Crypto {
 			return $token;
 		}
 
-		if ( function_exists( 'openssl_encrypt' ) ) {
-			$iv     = openssl_random_pseudo_bytes( 12 );
+		if ( function_exists( 'openssl_encrypt' ) && function_exists( 'openssl_random_pseudo_bytes' ) ) {
+			$iv = openssl_random_pseudo_bytes( 12 );
+			// A false return means the CSPRNG could not produce bytes; refuse to
+			// encrypt with a bad IV rather than emit a weak/invalid ciphertext.
+			if ( false === $iv ) {
+				return null;
+			}
 			$key    = self::key( 32 );
 			$tag    = '';
 			$cipher = openssl_encrypt( $plaintext, self::OPENSSL_CIPHER, $key, OPENSSL_RAW_DATA, $iv, $tag );

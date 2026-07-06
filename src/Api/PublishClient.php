@@ -117,12 +117,26 @@ final class PublishClient {
 			);
 		}
 
-		$code = (int) wp_remote_retrieve_response_code( $response );
-		$body = wp_remote_retrieve_body( $response );
-		$data = ( '' !== $body ) ? json_decode( $body, true ) : null;
-		$data = is_array( $data ) ? $data : array();
+		$code    = (int) wp_remote_retrieve_response_code( $response );
+		$body    = wp_remote_retrieve_body( $response );
+		$decoded = ( '' !== $body ) ? json_decode( $body, true ) : null;
+		$data    = is_array( $decoded ) ? $decoded : array();
 
 		if ( $code >= 200 && $code < 300 ) {
+			// A 2xx with an empty or non-JSON body is not a valid `me` response
+			// (e.g. an intercepting proxy or a login/HTML page). Treat it as a
+			// failure rather than reporting a false-positive "credential valid",
+			// matching Api\Client::get_json's handling of the read path.
+			if ( ! is_array( $decoded ) ) {
+				return array(
+					'ok'      => false,
+					'status'  => $code,
+					'profile' => null,
+					'error'   => 'invalid_response',
+					'message' => 'The node returned a non-JSON response to the identity probe.',
+				);
+			}
+
 			return array(
 				'ok'      => true,
 				'status'  => $code,
@@ -130,7 +144,7 @@ final class PublishClient {
 				'error'   => '',
 				'message' => '',
 			);
-		}
+		}//end if
 
 		return array(
 			'ok'      => false,

@@ -124,32 +124,34 @@ final class Credential {
 	 * Returned so callers that persist via the Settings API can hand the array
 	 * straight back to WordPress without a second write.
 	 *
+	 * On a crypto error the **new client id is still kept** (paired with the
+	 * previously stored secret), matching the operator-facing message that the
+	 * id was saved but the secret was not — the id is only semi-secret and
+	 * re-typing it on every retry would be a poor experience.
+	 *
 	 * @param string      $client_id     Service-token client id.
 	 * @param string|null $client_secret New secret, or null to keep the stored one.
 	 * @return array{stored:array{client_id:string,secret_enc:string},error:string}
 	 *         `error` is '' on success, else 'no_crypto' | 'encrypt_failed'
-	 *         (and `stored` is left unchanged).
+	 *         (with `stored` carrying the new id + the previously stored secret).
 	 */
 	public static function prepare( string $client_id, ?string $client_secret ): array {
 		$current   = self::stored();
 		$client_id = trim( $client_id );
 
 		$secret_enc = $current['secret_enc'];
+		$error      = '';
 		if ( null !== $client_secret && '' !== trim( $client_secret ) ) {
 			if ( ! Crypto::available() ) {
-				return array(
-					'stored' => $current,
-					'error'  => 'no_crypto',
-				);
+				$error = 'no_crypto';
+			} else {
+				$encrypted = Crypto::encrypt( trim( $client_secret ) );
+				if ( null === $encrypted ) {
+					$error = 'encrypt_failed';
+				} else {
+					$secret_enc = $encrypted;
+				}
 			}
-			$encrypted = Crypto::encrypt( trim( $client_secret ) );
-			if ( null === $encrypted ) {
-				return array(
-					'stored' => $current,
-					'error'  => 'encrypt_failed',
-				);
-			}
-			$secret_enc = $encrypted;
 		}
 
 		return array(
@@ -157,7 +159,7 @@ final class Credential {
 				'client_id'  => $client_id,
 				'secret_enc' => $secret_enc,
 			),
-			'error'  => '',
+			'error'  => $error,
 		);
 	}
 

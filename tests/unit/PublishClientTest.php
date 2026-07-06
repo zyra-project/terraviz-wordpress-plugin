@@ -142,4 +142,22 @@ class PublishClientTest extends WP_UnitTestCase {
 		$this->canned = $this->respond( 500, '' );
 		$this->assertSame( 'http_500', $this->client()->me()['error'] );
 	}
+
+	public function test_2xx_with_non_json_body_is_not_success(): void {
+		$this->canned = $this->respond( 200, '<!doctype html><title>Login</title>' );
+
+		$result = $this->client()->me();
+
+		$this->assertFalse( $result['ok'] );
+		$this->assertSame( 'invalid_response', $result['error'] );
+	}
+
+	public function test_2xx_with_empty_body_is_not_success(): void {
+		$this->canned = $this->respond( 200, '' );
+
+		$result = $this->client()->me();
+
+		$this->assertFalse( $result['ok'] );
+		$this->assertSame( 'invalid_response', $result['error'] );
+	}
 }
