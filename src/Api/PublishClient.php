@@ -257,6 +257,20 @@ final class PublishClient {
 	}
 
 	/**
+	 * `POST /api/v1/publish/events` — propose a news event. The event is born
+	 * `proposed` and awaits a curator's approval on the node; there is no
+	 * `PUT`/`GET :id`/delete and no publish/unpublish toggle for the caller, so
+	 * this is create-only (the plugin proposes, the curator disposes).
+	 *
+	 * @param array<string,mixed> $body `{ title, source:{name,url,publishedAt?}, summary?,
+	 *                                     externalId?, occurredStart?, imageUrl?, datasetIds? }`.
+	 * @return array<string,mixed>
+	 */
+	public function propose_event( array $body ): array {
+		return $this->send( 'POST', '/api/v1/publish/events', $body );
+	}
+
+	/**
 	 * Perform a request and normalise the response.
 	 *
 	 * @param string                   $method HTTP method.
