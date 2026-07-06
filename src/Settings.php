@@ -617,7 +617,7 @@ final class Settings {
 
 		printf(
 			'<p class="description">%s</p>',
-			esc_html__( 'A Cloudflare Access service token (a Client ID + Client Secret pair) that authenticates the publisher path. The secret is encrypted at rest and never sent to the browser. Use “Verify credential” below to confirm it works.', 'terraviz' )
+			esc_html__( 'A Cloudflare Access service token (a Client ID + Client Secret pair) that authenticates the publisher path. The secret is encrypted at rest and never sent to the browser. After you save it, use the “Verify credential” button below to confirm it works.', 'terraviz' )
 		);
 	}
 }
