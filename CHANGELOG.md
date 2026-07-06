@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+Phase 2 — WordPress account mapping (still no catalog writes).
+
+### Added
+- Custom `manage_terraviz` capability, granted to administrators on activation
+  and cleaned up on deactivation/uninstall, so a site owner can delegate
+  Terraviz configuration without full `manage_options`.
+- WP-role → publish-intent mapping (`Support/Capabilities.php`), shown
+  read-only on the settings screen. This is local authorization: a future
+  publish path proxies every call under one shared Terraviz `service` identity,
+  so WordPress — not Terraviz — gates who may act through the plugin.
+- Inert, encrypted **service-token** slot in settings: a Cloudflare Access
+  `Cf-Access-Client-Id` + `Cf-Access-Client-Secret` pair. The client id is
+  stored in the clear; the secret is encrypted at rest (libsodium `secretbox`,
+  OpenSSL AES-256-GCM fallback) and never returned to the browser.
+- Read-only "Verify credential" probe (`GET /api/v1/publish/me`) that validates
+  the stored token — reporting the recognised role/status — without mutating
+  any Terraviz content. No publish path exists yet.
+
 ## [0.1.0] - Unreleased
 
 Phase 1 — the zero-credential embed plugin.

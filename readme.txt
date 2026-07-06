@@ -40,7 +40,7 @@ The plugin makes no surprise outbound calls. Its only network requests are to th
 
 = Do I need an account or API key? =
 
-No. This release only embeds public content; there are no credentials anywhere. (Publishing datasets from WordPress is a later, separately gated phase.)
+No. Embedding is entirely public — every block, shortcode, and URL embed works with no credentials. The settings screen has an optional, inert "service token" slot that is groundwork for a future publishing release; it does nothing yet (there is no publish path) and can be ignored. Nothing on the public embed path ever uses a credential.
 
 = Where does the globe load from? =
 

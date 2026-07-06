@@ -73,10 +73,14 @@ Terraviz node, with **no credentials anywhere**.
 
 ---
 
-## Phase 2 — WP account mapping ⏳ (plugin repo, no Terraviz auth yet)
+## Phase 2 — WP account mapping ✅ (plugin repo, no catalog writes yet)
 
 Map WP roles/capabilities to intended Terraviz publish capabilities — the
-in-WP half of Integration F (upstream §5):
+in-WP half of Integration F (upstream §5). Because every future publish call is
+proxied under **one** shared `service` identity (upstream §5 Option 1;
+Terraviz sees the same publisher no matter which WP user acted), this mapping is
+**local authorization only** — WordPress, not Terraviz, gates who may act
+through the plugin.
 
 | WP capability | Plugin-granted intent |
 |---|---|
@@ -85,9 +89,20 @@ in-WP half of Integration F (upstream §5):
 | `author` (`publish_posts`) | draft; request publish |
 | `contributor` / lower | embed blocks only |
 
-Also: an **inert, encrypted credential slot** in settings + a **read-only**
-authenticated probe (`GET /api/v1/publish/me`) to validate a service token
-*before* any writes. No catalog mutation yet.
+| Item | Status | Where |
+|---|---|---|
+| Custom `manage_terraviz` capability — granted to `administrator` on activation, revoked on deactivate/uninstall | ✅ | `src/Support/Capabilities.php`, `src/Plugin.php`, `uninstall.php` |
+| WP-role → publish-intent map (pure, testable), shown read-only on the settings screen | ✅ | `src/Support/Capabilities.php`, `src/Settings.php` |
+| **Inert, encrypted credential slot** — a Cloudflare Access **service-token pair** (`Cf-Access-Client-Id` + `Cf-Access-Client-Secret`); client id stored plainly, secret encrypted at rest (libsodium `secretbox`, OpenSSL AES-256-GCM fallback), never sent to the browser | ✅ | `src/Support/Credential.php`, `src/Support/Crypto.php` |
+| **Read-only** authenticated probe (`GET /api/v1/publish/me`) to validate the token before any writes exist; typed error envelopes mapped to operator guidance | ✅ | `src/Api/PublishClient.php`, `src/Settings.php` |
+
+**No catalog mutation.** The credential slot is inert — its only consumer is
+the `me` probe. Verified upstream contract: `me` returns
+`{ id, email, display_name, affiliation, role, is_admin, status, created_at }`,
+and a service token provisions as role `service` (privileged for content,
+**not** admin / user-management). See
+`functions/api/v1/publish/{me,_middleware}.ts` and `_lib/access-auth.ts`
+upstream.
 
 ---
 

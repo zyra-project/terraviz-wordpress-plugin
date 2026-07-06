@@ -111,19 +111,26 @@ final class Plugin {
 	}
 
 	/**
-	 * Activation: nothing to provision in Phase 1 (no tables, no cron). We
-	 * simply seed default settings if absent.
+	 * Activation: seed default settings if absent, and grant the plugin's
+	 * custom `manage_terraviz` capability to administrators. No tables, no
+	 * cron, no credential is provisioned.
 	 */
 	public static function on_activate(): void {
 		if ( false === get_option( Support\Options::OPTION, false ) ) {
 			add_option( Support\Options::OPTION, Support\Options::defaults() );
 		}
+
+		Support\Capabilities::grant();
 	}
 
 	/**
-	 * Deactivation: drop cached catalog data so a re-activation starts fresh.
+	 * Deactivation: drop cached catalog data so a re-activation starts fresh,
+	 * and remove the custom capability so no orphaned grant lingers. The
+	 * stored credential (if any) is left in place — deactivation is not
+	 * uninstall.
 	 */
 	public static function on_deactivate(): void {
 		Catalog::flush();
+		Support\Capabilities::revoke();
 	}
 }
