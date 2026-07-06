@@ -552,13 +552,18 @@ final class Settings {
 		echo '</tbody></table>';
 
 		$mine = Capabilities::intent_label( Capabilities::intent_for() );
+
+		if ( Credential::configured() ) {
+			/* translators: %s: the current user's mapped publish access. */
+			$template = __( 'Your account currently maps to: %s. WordPress enforces this mapping when you use the Terraviz Publisher dashboard.', 'terraviz' );
+		} else {
+			/* translators: %s: the current user's mapped publish access. */
+			$template = __( 'Your account currently maps to: %s. No Terraviz service token is configured yet, though, so publishing is unavailable until you add one below.', 'terraviz' );
+		}
+
 		printf(
 			'<p class="description">%s</p>',
-			sprintf(
-				/* translators: %s: the current user's mapped publish access. */
-				esc_html__( 'Your account currently maps to: %s. WordPress enforces this mapping when you use the Terraviz Publisher dashboard.', 'terraviz' ),
-				'<strong>' . esc_html( $mine ) . '</strong>'
-			)
+			wp_kses_post( sprintf( $template, '<strong>' . esc_html( $mine ) . '</strong>' ) )
 		);
 	}
 
