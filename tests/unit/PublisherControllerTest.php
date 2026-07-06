@@ -235,6 +235,66 @@ class PublisherControllerTest extends WP_UnitTestCase {
 		$this->assertContains( 'PUT', $this->sent_methods );
 	}
 
+	public function test_normalize_asset_init_allowlists_fields(): void {
+		$out = $this->controller->normalize_asset_init(
+			array(
+				'kind'           => 'data',
+				'mime'           => 'video/mp4',
+				'size'           => '456',
+				'content_digest' => 'sha256:' . str_repeat( 'a', 64 ),
+				'evil'           => 'DROP',
+				'target'         => 'stream',
+			)
+		);
+
+		$this->assertSame(
+			array(
+				'kind'           => 'data',
+				'mime'           => 'video/mp4',
+				'size'           => 456,
+				'content_digest' => 'sha256:' . str_repeat( 'a', 64 ),
+			),
+			$out
+		);
+	}
+
+	public function test_draft_tier_cannot_upload_to_published_dataset(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'author' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['GET'] = $this->dataset_response(
+			array(
+				'id'           => 'D1',
+				'published_at' => '2026-01-01T00:00:00Z',
+				'retracted_at' => null,
+			)
+		);
+
+		$request = new WP_REST_Request( 'POST' );
+		$request->set_param( 'id', 'D1' );
+		$request->set_header( 'Content-Type', 'application/json' );
+		$request->set_body(
+			(string) wp_json_encode(
+				array(
+					'kind'           => 'data',
+					'mime'           => 'image/png',
+					'size'           => 1,
+					'content_digest' => 'sha256:' . str_repeat( 'a', 64 ),
+				)
+			)
+		);
+
+		$response = $this->controller->init_asset( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 403, $response->get_status() );
+		$this->assertSame( 'forbidden_published', $response->get_data()['error'] );
+		// The init must never be forwarded (only the state GET happened).
+		$this->assertNotContains( 'POST', $this->sent_methods );
+	}
+
 	public function test_publish_tier_edits_published_without_precheck(): void {
 		$this->configure_credential();
 		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );

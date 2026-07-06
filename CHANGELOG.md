@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Phase 3b — asset upload for the publisher dashboard.
+
+### Added
+- Asset upload through the presigned-R2 flow: the browser hashes the file
+  (`sha256`), the plugin proxies `init` to mint a short-lived presigned `PUT`,
+  the browser uploads the bytes **directly** to storage, and the plugin proxies
+  `complete` (the node re-verifies the digest and sets the dataset's ref). The
+  service token never touches the upload. Video uploads transcode
+  asynchronously (HTTP 202), reflected in the UI.
+- REST `POST /publisher/datasets/:id/asset` and `.../asset/:upload_id/complete`,
+  under the same published-lifecycle authorization gate as dataset edits, with
+  an init-body allowlist.
+
+Operator note: the direct byte upload is cross-origin, so the node's storage
+bucket must allow the WordPress site's origin (CORS).
+
+## [Unreleased — Phase 3a]
+
 Phase 3a — the authenticated publisher dashboard (dataset CRUD/lifecycle).
 
 ### Added

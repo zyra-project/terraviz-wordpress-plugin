@@ -278,4 +278,60 @@ class PublishClientTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'has%20space', $this->captured_url );
 		$this->assertStringNotContainsString( '/../', $this->captured_url );
 	}
+
+	public function test_init_asset_posts_body_to_asset_path(): void {
+		$this->canned = $this->respond(
+			201,
+			(string) wp_json_encode(
+				array(
+					'upload_id' => 'U1',
+					'r2'        => array(
+						'method'  => 'PUT',
+						'url'     => 'https://r2.example/x',
+						'headers' => array(),
+						'key'     => 'k',
+					),
+					'mock'      => false,
+				)
+			)
+		);
+
+		$result = $this->client()->init_asset(
+			'D1',
+			array(
+				'kind'           => 'data',
+				'mime'           => 'image/png',
+				'size'           => 123,
+				'content_digest' => 'sha256:' . str_repeat( 'a', 64 ),
+			)
+		);
+
+		$this->assertTrue( $result['ok'] );
+		$this->assertSame( 'U1', $result['data']['upload_id'] );
+		$this->assertSame( 'POST', $this->captured_args['method'] );
+		$this->assertStringEndsWith( '/datasets/D1/asset', $this->captured_url );
+		$this->assertSame( 'data', json_decode( $this->captured_args['body'], true )['kind'] );
+	}
+
+	public function test_complete_asset_targets_upload_path_with_object_body(): void {
+		$this->canned = $this->respond(
+			202,
+			(string) wp_json_encode(
+				array(
+					'dataset'     => array( 'id' => 'D1' ),
+					'transcoding' => true,
+				)
+			)
+		);
+
+		$result = $this->client()->complete_asset( 'D1', 'U1' );
+
+		$this->assertTrue( $result['ok'] );
+		$this->assertSame( 202, $result['status'] );
+		$this->assertTrue( $result['data']['transcoding'] );
+		$this->assertSame( 'POST', $this->captured_args['method'] );
+		$this->assertStringEndsWith( '/datasets/D1/asset/U1/complete', $this->captured_url );
+		// The bodyless completion must serialise to `{}`, not `[]`.
+		$this->assertSame( '{}', $this->captured_args['body'] );
+	}
 }
