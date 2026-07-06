@@ -38,6 +38,20 @@ class PublisherControllerTest extends WP_UnitTestCase {
 	 */
 	private $sent_methods = array();
 
+	/**
+	 * Outbound URLs the proxy actually sent, in order.
+	 *
+	 * @var array<int,string>
+	 */
+	private $sent_urls = array();
+
+	/**
+	 * Outbound request bodies the proxy actually sent, in order.
+	 *
+	 * @var array<int,string>
+	 */
+	private $sent_bodies = array();
+
 	public function set_up(): void {
 		parent::set_up();
 		Capabilities::grant();
@@ -56,6 +70,8 @@ class PublisherControllerTest extends WP_UnitTestCase {
 	public function intercept_http( $pre, $args, $url ) {
 		$method               = isset( $args['method'] ) ? (string) $args['method'] : 'GET';
 		$this->sent_methods[] = $method;
+		$this->sent_urls[]    = (string) $url;
+		$this->sent_bodies[]  = isset( $args['body'] ) ? (string) $args['body'] : '';
 
 		return $this->http_by_method[ $method ] ?? array(
 			'response' => array( 'code' => 200 ),
@@ -375,5 +391,188 @@ class PublisherControllerTest extends WP_UnitTestCase {
 		// A publish-tier user skips the state fetch entirely.
 		$this->assertNotContains( 'GET', $this->sent_methods );
 		$this->assertContains( 'PUT', $this->sent_methods );
+	}
+
+	private function event_request( string $id, array $body ): WP_REST_Request {
+		$request = new WP_REST_Request( 'POST' );
+		$request->set_param( 'id', $id );
+		$request->set_header( 'Content-Type', 'application/json' );
+		$request->set_body( (string) wp_json_encode( $body ) );
+		return $request;
+	}
+
+	public function test_list_events_forwards_get_with_status(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['GET'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode( array( 'events' => array( array( 'id' => 'EV1' ) ) ) ),
+		);
+
+		$request = new WP_REST_Request( 'GET' );
+		$request->set_param( 'status', 'approved' );
+		$response = $this->controller->list_events( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertContains( 'GET', $this->sent_methods );
+		$this->assertStringContainsString( '/api/v1/publish/events?status=approved', end( $this->sent_urls ) );
+	}
+
+	public function test_list_events_omits_empty_status(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['GET'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode( array( 'events' => array() ) ),
+		);
+
+		$response = $this->controller->list_events( new WP_REST_Request( 'GET' ) );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertStringEndsWith( '/api/v1/publish/events', end( $this->sent_urls ) );
+	}
+
+	public function test_review_event_forwards_post_with_normalized_body(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['POST'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode( array( 'event' => array( 'id' => 'EV1' ) ) ),
+		);
+
+		$request  = $this->event_request(
+			'EV1',
+			array(
+				'event'         => 'approve',
+				'addDatasetIds' => array( 'D1', 'D2', array( 'nope' ) ),
+				'links'         => array(
+					array(
+						'datasetId' => 'D3',
+						'decision'  => 'reject',
+					),
+					array( 'datasetId' => 'D4' ), // Missing decision — dropped.
+				),
+				'edits'         => array(
+					'occurredStart' => '2026-01-02',
+					'regionName'    => 'north-atlantic',
+					'point'         => array(
+						'lat' => '40.5',
+						'lon' => '-70',
+					),
+					'imageAlt'      => null,
+					'evil'          => 'DROP',
+				),
+				'garbage'       => true,
+			)
+		);
+		$response = $this->controller->review_event( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertContains( 'POST', $this->sent_methods );
+		$this->assertStringEndsWith( '/api/v1/publish/events/EV1', end( $this->sent_urls ) );
+
+		$sent = json_decode( end( $this->sent_bodies ), true );
+		$this->assertSame(
+			array(
+				'event'         => 'approve',
+				'addDatasetIds' => array( 'D1', 'D2' ),
+				'links'         => array(
+					array(
+						'datasetId' => 'D3',
+						'decision'  => 'reject',
+					),
+				),
+				'edits'         => array(
+					'occurredStart' => '2026-01-02',
+					'regionName'    => 'north-atlantic',
+					'imageAlt'      => null,
+					'point'         => array(
+						'lat' => 40.5,
+						'lon' => -70,
+					),
+				),
+			),
+			$sent
+		);
+	}
+
+	public function test_normalize_event_review_body_drops_unknown_and_bad_shapes(): void {
+		$out = $this->controller->normalize_event_review_body(
+			array(
+				'event'         => 'maybe', // Not in the enum — dropped.
+				'addDatasetIds' => 'D1', // Not a list — dropped.
+				'links'         => array( 'not-an-object' ),
+				'edits'         => array(
+					'videoEmbedUrl' => 'https://youtube-nocookie.com/x',
+					'point'         => array( 'lat' => 40.5 ), // Missing lon — dropped.
+					'unknown'       => 'x',
+				),
+				'stray'         => 1,
+			)
+		);
+
+		$this->assertSame(
+			array( 'edits' => array( 'videoEmbedUrl' => 'https://youtube-nocookie.com/x' ) ),
+			$out
+		);
+	}
+
+	public function test_normalize_event_edits_handles_nullable_fields(): void {
+		// null clears; a scalar sets; a non-scalar is dropped (never "Array").
+		$out = $this->controller->normalize_event_review_body(
+			array(
+				'edits' => array(
+					'imageAlt'      => null,
+					'videoEmbedUrl' => array( 'not', 'a', 'string' ),
+					'imageUrl'      => 'https://x/y.png',
+				),
+			)
+		);
+
+		$this->assertArrayHasKey( 'imageAlt', $out['edits'] );
+		$this->assertNull( $out['edits']['imageAlt'] );
+		$this->assertArrayNotHasKey( 'videoEmbedUrl', $out['edits'] );
+		$this->assertSame( 'https://x/y.png', $out['edits']['imageUrl'] );
+	}
+
+	public function test_events_routes_require_publish_tier(): void {
+		$editor = self::factory()->user->create( array( 'role' => 'editor' ) );
+		$author = self::factory()->user->create( array( 'role' => 'author' ) );
+
+		wp_set_current_user( $editor );
+		$this->assertTrue( $this->controller->require_publish() );
+
+		wp_set_current_user( $author );
+		$this->assertFalse( $this->controller->require_publish() );
+	}
+
+	public function test_list_events_without_credential_returns_409(): void {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+
+		$response = $this->controller->list_events( new WP_REST_Request( 'GET' ) );
+
+		$this->assertSame( 409, $response->get_status() );
+		$this->assertSame( 'credential_missing', $response->get_data()['error'] );
+	}
+
+	public function test_review_event_without_credential_returns_409(): void {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+
+		$response = $this->controller->review_event( $this->event_request( 'EV1', array( 'event' => 'approve' ) ) );
+
+		$this->assertSame( 409, $response->get_status() );
+		$this->assertSame( 'credential_missing', $response->get_data()['error'] );
 	}
 }

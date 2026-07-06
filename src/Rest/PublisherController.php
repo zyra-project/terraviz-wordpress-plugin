@@ -46,8 +46,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class PublisherController {
 
-	private const NAMESPACE = 'terraviz/v1';
-	private const BASE      = '/publisher/datasets';
+	private const NAMESPACE   = 'terraviz/v1';
+	private const BASE        = '/publisher/datasets';
+	private const EVENTS_BASE = '/publisher/events';
 
 	/**
 	 * URL-segment pattern for a dataset id (ULID or slug).
@@ -203,6 +204,35 @@ final class PublisherController {
 				'permission_callback' => array( $this, 'require_draft' ),
 			)
 		);
+
+		// Events curator queue. Reviewing (approving/rejecting) is an editorial
+		// action, so both routes require the publish tier.
+		register_rest_route(
+			self::NAMESPACE,
+			self::EVENTS_BASE,
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'list_events' ),
+				'permission_callback' => array( $this, 'require_publish' ),
+				'args'                => array(
+					'status' => array(
+						'type'     => 'string',
+						'required' => false,
+						'enum'     => array( 'proposed', 'approved', 'rejected', 'expired', 'all' ),
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			self::EVENTS_BASE . '/' . self::ID_PATTERN,
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'review_event' ),
+				'permission_callback' => array( $this, 'require_publish' ),
+			)
+		);
 	}
 
 	/**
@@ -296,6 +326,44 @@ final class PublisherController {
 		$body = $this->normalize_dataset_body( (array) $request->get_json_params() );
 
 		return $this->respond( $client->update_dataset( $id, $body ) );
+	}
+
+	/**
+	 * GET the events review queue.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function list_events( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		$query  = array();
+		$status = $request->get_param( 'status' );
+		if ( null !== $status && '' !== (string) $status ) {
+			$query['status'] = (string) $status;
+		}
+
+		return $this->respond( $client->list_events( $query ) );
+	}
+
+	/**
+	 * POST a curator review for one event (approve/reject + optional edits).
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function review_event( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		$body = $this->normalize_event_review_body( (array) $request->get_json_params() );
+
+		return $this->respond( $client->review_event( (string) $request->get_param( 'id' ), $body ) );
 	}
 
 	/**
@@ -614,5 +682,91 @@ final class PublisherController {
 		}
 
 		return $out;
+	}
+
+	/**
+	 * Reduce a caller-supplied event review to the allowlisted shape: the
+	 * approve/reject action, per-link decisions, datasets to attach, and the
+	 * bounded set of editable fields the node accepts. Unknown keys are dropped;
+	 * the node performs the authoritative validation.
+	 *
+	 * @param array<string,mixed> $raw Decoded JSON body.
+	 * @return array<string,mixed>
+	 */
+	public function normalize_event_review_body( array $raw ): array {
+		$out = array();
+
+		if ( isset( $raw['event'] ) && in_array( $raw['event'], array( 'approve', 'reject' ), true ) ) {
+			$out['event'] = (string) $raw['event'];
+		}
+
+		if ( isset( $raw['addDatasetIds'] ) && is_array( $raw['addDatasetIds'] ) ) {
+			$out['addDatasetIds'] = array_values( array_map( 'strval', array_filter( $raw['addDatasetIds'], 'is_scalar' ) ) );
+		}
+
+		if ( isset( $raw['links'] ) && is_array( $raw['links'] ) ) {
+			$links = array();
+			foreach ( $raw['links'] as $link ) {
+				if (
+					is_array( $link )
+					&& isset( $link['datasetId'] ) && is_scalar( $link['datasetId'] )
+					&& isset( $link['decision'] ) && in_array( $link['decision'], array( 'approve', 'reject' ), true )
+				) {
+					$links[] = array(
+						'datasetId' => (string) $link['datasetId'],
+						'decision'  => (string) $link['decision'],
+					);
+				}
+			}
+			if ( ! empty( $links ) ) {
+				$out['links'] = $links;
+			}
+		}
+
+		if ( isset( $raw['edits'] ) && is_array( $raw['edits'] ) ) {
+			$edits = $this->normalize_event_edits( $raw['edits'] );
+			if ( ! empty( $edits ) ) {
+				$out['edits'] = $edits;
+			}
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Allowlist the bounded set of editable event fields the node's review
+	 * handler accepts. `imageAlt`/`videoEmbedUrl` are nullable (null clears).
+	 *
+	 * @param array<string,mixed> $raw Raw `edits` object.
+	 * @return array<string,mixed>
+	 */
+	private function normalize_event_edits( array $raw ): array {
+		$edits = array();
+
+		foreach ( array( 'occurredStart', 'regionName', 'imageUrl' ) as $key ) {
+			if ( array_key_exists( $key, $raw ) && ( is_string( $raw[ $key ] ) || is_numeric( $raw[ $key ] ) ) ) {
+				$edits[ $key ] = (string) $raw[ $key ];
+			}
+		}
+
+		foreach ( array( 'imageAlt', 'videoEmbedUrl' ) as $key ) {
+			// Nullable: null clears the field; a scalar sets it. Anything else
+			// (array/object) is dropped rather than stringified to "Array".
+			if ( array_key_exists( $key, $raw ) && ( null === $raw[ $key ] || is_scalar( $raw[ $key ] ) ) ) {
+				$edits[ $key ] = null === $raw[ $key ] ? null : (string) $raw[ $key ];
+			}
+		}
+
+		if ( isset( $raw['point'] ) && is_array( $raw['point'] )
+			&& isset( $raw['point']['lat'], $raw['point']['lon'] )
+			&& is_numeric( $raw['point']['lat'] ) && is_numeric( $raw['point']['lon'] )
+		) {
+			$edits['point'] = array(
+				'lat' => 0 + $raw['point']['lat'],
+				'lon' => 0 + $raw['point']['lon'],
+			);
+		}
+
+		return $edits;
 	}
 }

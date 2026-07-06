@@ -1,21 +1,26 @@
 /**
- * The publisher dashboard root: switches between the dataset list and the
- * create/edit form, and owns the list-level lifecycle actions.
+ * The publisher dashboard root: a top-level section nav (Datasets | Events)
+ * over two workflows. Datasets switches between the list and the create/edit
+ * form; Events (publish-tier only) switches between the review queue and the
+ * per-event review screen.
  */
 import { __ } from '@wordpress/i18n';
 import { useState, useEffect, useCallback } from '@wordpress/element';
 import { Notice } from '@wordpress/components';
 import DatasetList from './DatasetList';
 import DatasetForm from './DatasetForm';
+import EventList from './EventList';
+import EventReview from './EventReview';
 import {
 	listDatasets,
 	publishDataset,
 	retractDataset,
 	deleteDataset,
+	listEvents,
 	normalizeError,
 } from './api';
 
-export default function App( { boot } ) {
+function DatasetsSection( { boot } ) {
 	const [ view, setView ] = useState( 'list' );
 	const [ filter, setFilter ] = useState( '' );
 	const [ datasets, setDatasets ] = useState( [] );
@@ -39,10 +44,10 @@ export default function App( { boot } ) {
 	}, [ filter ] );
 
 	useEffect( () => {
-		if ( view === 'list' && boot.credentialConfigured ) {
+		if ( view === 'list' ) {
 			refresh();
 		}
-	}, [ view, refresh, boot.credentialConfigured ] );
+	}, [ view, refresh ] );
 
 	const runAction = ( fn, id, confirmText ) => {
 		// eslint-disable-next-line no-alert -- a native confirm is acceptable for a destructive wp-admin action.
@@ -61,23 +66,6 @@ export default function App( { boot } ) {
 			)
 			.finally( () => setBusyId( null ) );
 	};
-
-	if ( ! boot.credentialConfigured ) {
-		return (
-			<Notice status="warning" isDismissible={ false }>
-				{ __(
-					'No Terraviz service token is configured yet, so publishing is unavailable.',
-					'terraviz'
-				) }{ ' ' }
-				<a href={ boot.settingsUrl }>
-					{ __(
-						'Configure it under Settings → Terraviz.',
-						'terraviz'
-					) }
-				</a>
-			</Notice>
-		);
-	}
 
 	if ( view === 'create' || ( view && view.editId ) ) {
 		return (
@@ -128,6 +116,124 @@ export default function App( { boot } ) {
 					)
 				}
 			/>
+		</div>
+	);
+}
+
+function EventsSection() {
+	const [ reviewing, setReviewing ] = useState( null );
+	const [ filter, setFilter ] = useState( 'proposed' );
+	const [ events, setEvents ] = useState( [] );
+	const [ loading, setLoading ] = useState( false );
+	const [ notice, setNotice ] = useState( null );
+
+	const refresh = useCallback( () => {
+		setLoading( true );
+		listEvents( filter )
+			.then( ( res ) =>
+				setEvents( Array.isArray( res.events ) ? res.events : [] )
+			)
+			.catch( ( e ) =>
+				setNotice( {
+					type: 'error',
+					text: normalizeError( e ).message,
+				} )
+			)
+			.finally( () => setLoading( false ) );
+	}, [ filter ] );
+
+	useEffect( () => {
+		if ( ! reviewing ) {
+			refresh();
+		}
+	}, [ reviewing, refresh ] );
+
+	if ( reviewing ) {
+		return (
+			<EventReview
+				event={ reviewing }
+				onReviewed={ () => setReviewing( null ) }
+				onCancel={ () => setReviewing( null ) }
+			/>
+		);
+	}
+
+	return (
+		<div>
+			{ notice && (
+				<Notice
+					status={ notice.type }
+					onRemove={ () => setNotice( null ) }
+				>
+					{ notice.text }
+				</Notice>
+			) }
+			<EventList
+				events={ events }
+				loading={ loading }
+				filter={ filter }
+				onFilter={ setFilter }
+				onReview={ ( ev ) => setReviewing( ev ) }
+			/>
+		</div>
+	);
+}
+
+export default function App( { boot } ) {
+	const [ section, setSection ] = useState( 'datasets' );
+
+	if ( ! boot.credentialConfigured ) {
+		return (
+			<Notice status="warning" isDismissible={ false }>
+				{ __(
+					'No Terraviz service token is configured yet, so publishing is unavailable.',
+					'terraviz'
+				) }{ ' ' }
+				<a href={ boot.settingsUrl }>
+					{ __(
+						'Configure it under Settings → Terraviz.',
+						'terraviz'
+					) }
+				</a>
+			</Notice>
+		);
+	}
+
+	const showEvents = !! boot.canPublish;
+
+	return (
+		<div>
+			{ showEvents && (
+				<h2
+					className="nav-tab-wrapper"
+					style={ { marginBottom: '16px' } }
+				>
+					<button
+						type="button"
+						className={ `nav-tab${
+							section === 'datasets' ? ' nav-tab-active' : ''
+						}` }
+						onClick={ () => setSection( 'datasets' ) }
+					>
+						{ __( 'Datasets', 'terraviz' ) }
+					</button>
+					<button
+						type="button"
+						className={ `nav-tab${
+							section === 'events' ? ' nav-tab-active' : ''
+						}` }
+						onClick={ () => setSection( 'events' ) }
+					>
+						{ __( 'Events', 'terraviz' ) }
+					</button>
+				</h2>
+			) }
+
+			{ showEvents && section === 'events' ? (
+				<EventsSection />
+			) : (
+				<DatasetsSection boot={ boot } />
+			) }
 		</div>
 	);
 }

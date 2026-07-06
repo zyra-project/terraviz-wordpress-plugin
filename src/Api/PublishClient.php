@@ -271,6 +271,39 @@ final class PublishClient {
 	}
 
 	/**
+	 * `GET /api/v1/publish/events` — the curator review queue. `status` narrows
+	 * the bucket (`proposed` default, `approved|rejected|expired`, or `all`). The
+	 * list carries full event objects (each with suggested dataset `links`), so
+	 * there is no per-id fetch.
+	 *
+	 * @param array<string,string> $query Optional query params (e.g. `status`).
+	 * @return array<string,mixed>
+	 */
+	public function list_events( array $query = array() ): array {
+		$path = '/api/v1/publish/events';
+		if ( ! empty( $query ) ) {
+			$path .= '?' . http_build_query( $query );
+		}
+
+		return $this->send( 'GET', $path );
+	}
+
+	/**
+	 * `POST /api/v1/publish/events/:id` — submit a curator review: approve or
+	 * reject the event, accept/reject its suggested dataset links, add datasets,
+	 * and apply a bounded set of edits. This is a review submission, not a
+	 * publish/unpublish toggle.
+	 *
+	 * @param string              $id   Event id.
+	 * @param array<string,mixed> $body `{ event?:'approve'|'reject', addDatasetIds?:string[],
+	 *                                     links?:[{datasetId,decision}], edits?:{…} }`.
+	 * @return array<string,mixed>
+	 */
+	public function review_event( string $id, array $body ): array {
+		return $this->send( 'POST', '/api/v1/publish/events/' . rawurlencode( $id ), $body );
+	}
+
+	/**
 	 * Perform a request and normalise the response.
 	 *
 	 * @param string                   $method HTTP method.

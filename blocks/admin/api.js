@@ -108,6 +108,35 @@ export function completeAsset( id, uploadId ) {
 	} );
 }
 
+const eventsUrl = () => `${ root }/events`;
+const eventUrl = ( id ) => `${ eventsUrl() }/${ encodeURIComponent( id ) }`;
+
+/**
+ * List the events review queue. Unlike datasets, the node returns the whole
+ * queue in one shot (no cursor), each item carrying its suggested dataset
+ * `links`.
+ *
+ * @param {string} [status] Bucket filter ('proposed'|'approved'|'rejected'|'expired'|'all').
+ * @return {Promise<{events: Array}>} The queue.
+ */
+export function listEvents( status ) {
+	const url = status
+		? `${ eventsUrl() }?status=${ encodeURIComponent( status ) }`
+		: eventsUrl();
+	return apiFetch( { url } );
+}
+
+/**
+ * Submit a curator review for one event.
+ *
+ * @param {string} id   Event id.
+ * @param {Object} data `{ event?, addDatasetIds?, links?, edits? }`.
+ * @return {Promise<Object>} The reviewed event + link decisions.
+ */
+export function reviewEvent( id, data ) {
+	return apiFetch( { url: eventUrl( id ), method: 'POST', data } );
+}
+
 /**
  * Normalise an apiFetch rejection into `{ message, errors }`. apiFetch rejects
  * with the parsed JSON error body, so field-validation errors from the node
