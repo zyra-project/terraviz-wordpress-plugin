@@ -7,6 +7,14 @@
 
 .terraviz-embed {
 	margin: 1.5em 0;
+	/* Fill the content column. Without an explicit width the container collapses
+	 * to its contents' intrinsic size (~the iframe's default width) inside a
+	 * shrink-to-fit layout — a centered flex/grid column, or a theme that styles
+	 * `figure` as `width: fit-content` — which made embeds render as a tiny box
+	 * on some themes. width:100% overrides that; max-width:100% avoids overflow. */
+	width: 100%;
+	max-width: 100%;
+	box-sizing: border-box;
 }
 
 .terraviz-embed__media {
