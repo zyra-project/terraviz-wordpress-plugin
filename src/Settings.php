@@ -226,6 +226,20 @@ final class Settings {
 			);
 		}
 
+		// WordPress runs a register_setting sanitize callback twice when the
+		// option row is first created (via update_option -> add_option). On the
+		// second pass $input is our own first-pass output — it carries the
+		// already-encrypted `secret_enc` but no raw `client_secret`. Return it
+		// unchanged so the second pass doesn't treat the missing raw secret as
+		// "keep existing" and clobber the freshly encrypted one with an empty
+		// value (the option isn't committed yet, so stored() is still empty).
+		if ( ! isset( $input['client_secret'] ) && isset( $input['secret_enc'] ) ) {
+			return array(
+				'client_id'  => isset( $input['client_id'] ) ? sanitize_text_field( wp_unslash( $input['client_id'] ) ) : '',
+				'secret_enc' => (string) $input['secret_enc'],
+			);
+		}
+
 		$client_id = isset( $input['client_id'] ) ? sanitize_text_field( wp_unslash( $input['client_id'] ) ) : '';
 
 		// An empty secret field means "keep the stored secret"; a non-empty one
