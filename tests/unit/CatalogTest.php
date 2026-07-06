@@ -89,11 +89,18 @@ class CatalogTest extends WP_UnitTestCase {
 		// The old code stored the decoded array (which serialises large enough to
 		// blow an object cache's item limit). It must now be a compact string.
 		$this->assertIsString( $stored );
-		$this->assertStringStartsWith( 'tvz-gz1:', $stored );
 
-		// And it must be markedly smaller than the raw JSON it represents.
-		$raw_json = (string) wp_json_encode( $body );
-		$this->assertLessThan( strlen( $raw_json ), strlen( $stored ) );
+		if ( function_exists( 'gzcompress' ) ) {
+			// With zlib the large payload takes the compressed path...
+			$this->assertStringStartsWith( 'tvz-gz1:', $stored );
+
+			// ...and must be markedly smaller than the raw JSON it represents.
+			$raw_json = (string) wp_json_encode( $body );
+			$this->assertLessThan( strlen( $raw_json ), strlen( $stored ) );
+		} else {
+			// Without zlib the code correctly falls back to the raw format.
+			$this->assertStringStartsWith( 'tvz-rw1:', $stored );
+		}
 	}
 
 	public function test_negative_result_is_cached_and_not_refetched(): void {

@@ -37,16 +37,18 @@ final class Catalog {
 	private const CACHE_MISS = "\0terraviz_cache_miss\0";
 
 	/**
-	 * Encoding tags for a stored payload. The trailing digit is a format
-	 * version — bump it to invalidate every cached value after a format change.
+	 * Encoding tags for a stored payload. `ENC_GZIP` marks a base64-encoded zlib
+	 * deflate stream (`gzcompress()`, RFC 1950 — not RFC 1952 gzip); `ENC_RAW`
+	 * marks the JSON verbatim. The trailing digit is a format version — bump it
+	 * to invalidate every cached value after a format change.
 	 */
 	private const ENC_GZIP = 'tvz-gz1:';
 	private const ENC_RAW  = 'tvz-rw1:';
 
 	/**
 	 * Only compress payloads at least this many bytes of JSON; smaller values
-	 * (single datasets, negative markers) are stored raw, since gzip + base64
-	 * would only inflate them.
+	 * (single datasets, negative markers) are stored raw, since zlib deflate +
+	 * base64 would only inflate them.
 	 */
 	private const COMPRESS_MIN_BYTES = 2048;
 
