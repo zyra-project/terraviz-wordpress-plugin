@@ -133,7 +133,7 @@ final class PublishClient {
 					'status'  => $code,
 					'profile' => null,
 					'error'   => 'invalid_response',
-					'message' => 'The node returned a non-JSON response to the identity probe.',
+					'message' => __( 'The node returned a non-JSON response to the identity probe.', 'terraviz' ),
 				);
 			}
 

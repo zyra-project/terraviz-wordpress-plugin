@@ -420,6 +420,8 @@ final class Settings {
 				return __( 'The token is valid but the publisher account is suspended on the node.', 'terraviz' );
 			case 'access_unconfigured' === $slug || 'binding_missing' === $slug || 503 === $status:
 				return __( 'The node is not configured to accept publisher credentials yet (503). This is a node-side setting.', 'terraviz' );
+			case 'invalid_response' === $slug:
+				return __( 'The node responded but not with a valid identity document. The origin may be fronted by a proxy or login page rather than the Terraviz API.', 'terraviz' );
 			default:
 				$detail = '' !== $result['message'] ? $result['message'] : sprintf( 'HTTP %d', $status );
 				return sprintf(

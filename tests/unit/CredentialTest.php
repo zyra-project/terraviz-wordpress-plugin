@@ -17,6 +17,13 @@ class CredentialTest extends WP_UnitTestCase {
 
 	public function set_up(): void {
 		parent::set_up();
+		// These assertions store and read back an encrypted secret, so they
+		// need a crypto backend. The plugin degrades gracefully without one
+		// (save() returns ok=false), which these tests aren't exercising —
+		// skip cleanly rather than fail, mirroring CryptoTest.
+		if ( ! Crypto::available() ) {
+			$this->markTestSkipped( 'No Sodium or OpenSSL backend available for encryption.' );
+		}
 		Credential::clear();
 	}
 
