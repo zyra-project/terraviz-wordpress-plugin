@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-06
+
 Phase 4 — post/blog bridge (one-way WP → Terraviz discovery).
 
 ### Added
