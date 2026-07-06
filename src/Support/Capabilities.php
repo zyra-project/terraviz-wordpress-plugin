@@ -146,6 +146,18 @@ final class Capabilities {
 	}
 
 	/**
+	 * Whether a user may manage node configuration through the plugin — the
+	 * configure tier (the plugin's `manage_terraviz` gate) only. Feed-connector
+	 * management maps here: the node restricts every feed endpoint (reads
+	 * included) to admin/service callers, so publish tier is not enough.
+	 *
+	 * @param \WP_User|int|null $user User or id; null = current user.
+	 */
+	public static function can_configure( $user = null ): bool {
+		return self::INTENT_CONFIGURE === self::intent_for( $user );
+	}
+
+	/**
 	 * A short, translatable label for an intent tier (for the settings UI).
 	 *
 	 * @param string $intent One of the INTENT_* constants.

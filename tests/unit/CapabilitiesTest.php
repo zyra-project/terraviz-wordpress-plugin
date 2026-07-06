@@ -68,15 +68,22 @@ class CapabilitiesTest extends WP_UnitTestCase {
 	public function test_tier_helpers_follow_roles(): void {
 		Capabilities::grant();
 
+		$admin       = self::factory()->user->create( array( 'role' => 'administrator' ) );
 		$editor      = self::factory()->user->create( array( 'role' => 'editor' ) );
 		$author      = self::factory()->user->create( array( 'role' => 'author' ) );
 		$contributor = self::factory()->user->create( array( 'role' => 'contributor' ) );
 
+		$this->assertTrue( Capabilities::can_configure( $admin ) );
+		$this->assertTrue( Capabilities::can_publish( $admin ) );
+
 		$this->assertTrue( Capabilities::can_draft( $editor ) );
 		$this->assertTrue( Capabilities::can_publish( $editor ) );
+		// Editors publish but do not reach the configure tier (feeds gate).
+		$this->assertFalse( Capabilities::can_configure( $editor ) );
 
 		$this->assertTrue( Capabilities::can_draft( $author ) );
 		$this->assertFalse( Capabilities::can_publish( $author ) );
+		$this->assertFalse( Capabilities::can_configure( $author ) );
 
 		$this->assertFalse( Capabilities::can_draft( $contributor ) );
 		$this->assertFalse( Capabilities::can_publish( $contributor ) );

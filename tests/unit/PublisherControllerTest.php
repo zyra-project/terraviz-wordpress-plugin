@@ -575,4 +575,219 @@ class PublisherControllerTest extends WP_UnitTestCase {
 		$this->assertSame( 409, $response->get_status() );
 		$this->assertSame( 'credential_missing', $response->get_data()['error'] );
 	}
+
+	private function feed_request( array $body, string $id = '' ): WP_REST_Request {
+		$request = new WP_REST_Request( 'POST' );
+		if ( '' !== $id ) {
+			$request->set_param( 'id', $id );
+		}
+		$request->set_header( 'Content-Type', 'application/json' );
+		$request->set_body( (string) wp_json_encode( $body ) );
+		return $request;
+	}
+
+	public function test_feeds_routes_require_configure_tier(): void {
+		$admin  = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		$editor = self::factory()->user->create( array( 'role' => 'editor' ) );
+		$author = self::factory()->user->create( array( 'role' => 'author' ) );
+
+		wp_set_current_user( $admin );
+		$this->assertTrue( $this->controller->require_configure() );
+
+		// A publish-tier editor is NOT enough — feeds are configure-only.
+		wp_set_current_user( $editor );
+		$this->assertFalse( $this->controller->require_configure() );
+
+		wp_set_current_user( $author );
+		$this->assertFalse( $this->controller->require_configure() );
+	}
+
+	public function test_list_feeds_forwards_get(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['GET'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode( array( 'feeds' => array() ) ),
+		);
+
+		$response = $this->controller->list_feeds();
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertContains( 'GET', $this->sent_methods );
+		$this->assertStringEndsWith( '/api/v1/publish/feeds', end( $this->sent_urls ) );
+	}
+
+	public function test_create_feed_forwards_post_with_normalized_body(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['POST'] = array(
+			'response' => array( 'code' => 201 ),
+			'body'     => (string) wp_json_encode( array( 'feed' => array( 'id' => 'F1' ) ) ),
+		);
+
+		$response = $this->controller->create_feed(
+			$this->feed_request(
+				array(
+					'kind'    => 'rss',
+					'label'   => '  Quakes  ',
+					'url'     => 'https://example.com/feed.xml',
+					'enabled' => 'false', // Stringy — coerced to a real bool.
+					'id'      => 'INJECTED', // Server-owned — dropped.
+					'evil'    => 'DROP',
+				)
+			)
+		);
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 201, $response->get_status() );
+		$this->assertContains( 'POST', $this->sent_methods );
+		$this->assertStringEndsWith( '/api/v1/publish/feeds', end( $this->sent_urls ) );
+
+		$sent = json_decode( end( $this->sent_bodies ), true );
+		$this->assertSame(
+			array(
+				'kind'    => 'rss',
+				'label'   => 'Quakes',
+				'url'     => 'https://example.com/feed.xml',
+				'enabled' => false,
+			),
+			$sent
+		);
+	}
+
+	public function test_update_feed_drops_kind_and_forwards_post(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['POST'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode( array( 'feed' => array( 'id' => 'F1' ) ) ),
+		);
+
+		$response = $this->controller->update_feed(
+			$this->feed_request(
+				array(
+					'kind'     => 'eonet', // Immutable — must be dropped on patch.
+					'label'    => 'Renamed',
+					'category' => null,     // null clears.
+				),
+				'F1'
+			)
+		);
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertStringEndsWith( '/api/v1/publish/feeds/F1', end( $this->sent_urls ) );
+
+		$sent = json_decode( end( $this->sent_bodies ), true );
+		$this->assertArrayNotHasKey( 'kind', $sent );
+		$this->assertSame( 'Renamed', $sent['label'] );
+		$this->assertArrayHasKey( 'category', $sent );
+		$this->assertNull( $sent['category'] );
+	}
+
+	public function test_delete_feed_forwards_delete(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['DELETE'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode( array( 'deleted' => true ) ),
+		);
+
+		$request = new WP_REST_Request( 'DELETE' );
+		$request->set_param( 'id', 'F1' );
+		$response = $this->controller->delete_feed( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertContains( 'DELETE', $this->sent_methods );
+		$this->assertStringEndsWith( '/api/v1/publish/feeds/F1', end( $this->sent_urls ) );
+	}
+
+	public function test_preview_feed_forwards_get_with_query(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['GET'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode(
+				array(
+					'fetched'  => 3,
+					'mappable' => 2,
+					'items'    => array(),
+				)
+			),
+		);
+
+		$request = new WP_REST_Request( 'GET' );
+		$request->set_param( 'kind', 'rss' );
+		$request->set_param( 'url', 'https://example.com/feed.xml' );
+		$response = $this->controller->preview_feed( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		$url = end( $this->sent_urls );
+		$this->assertStringContainsString( '/api/v1/publish/feeds/preview?', $url );
+		$this->assertStringContainsString( 'kind=rss', $url );
+		$this->assertStringContainsString( 'url=https', $url );
+	}
+
+	public function test_normalize_feed_body_allowlists_and_coerces(): void {
+		// Create keeps kind; a non-scalar category is dropped; unknown keys go.
+		$create = $this->controller->normalize_feed_body(
+			array(
+				'kind'     => 'rss',
+				'label'    => '  Feed  ',
+				'category' => array( 'not', 'scalar' ),
+				'enabled'  => 1,
+				'junk'     => 'x',
+			),
+			true
+		);
+		$this->assertSame(
+			array(
+				'kind'    => 'rss',
+				'label'   => 'Feed',
+				'enabled' => true,
+			),
+			$create
+		);
+
+		// An unknown kind on create is dropped (node stays the validator).
+		$bad_kind = $this->controller->normalize_feed_body( array( 'kind' => 'atom' ), true );
+		$this->assertArrayNotHasKey( 'kind', $bad_kind );
+
+		// Patch drops kind even when present, and preserves an explicit null category.
+		$patch = $this->controller->normalize_feed_body(
+			array(
+				'kind'     => 'eonet',
+				'category' => null,
+			),
+			false
+		);
+		$this->assertSame( array( 'category' => null ), $patch );
+	}
+
+	public function test_list_feeds_without_credential_returns_409(): void {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+
+		$response = $this->controller->list_feeds();
+
+		$this->assertSame( 409, $response->get_status() );
+		$this->assertSame( 'credential_missing', $response->get_data()['error'] );
+	}
 }

@@ -49,6 +49,7 @@ final class PublisherController {
 	private const NAMESPACE   = 'terraviz/v1';
 	private const BASE        = '/publisher/datasets';
 	private const EVENTS_BASE = '/publisher/events';
+	private const FEEDS_BASE  = '/publisher/feeds';
 
 	/**
 	 * URL-segment pattern for a dataset id (ULID or slug).
@@ -233,6 +234,66 @@ final class PublisherController {
 				'permission_callback' => array( $this, 'require_publish' ),
 			)
 		);
+
+		// Feed connectors (the RSS/EONET sources that generate proposed events).
+		// The node restricts every feed endpoint — reads included — to
+		// admin/service callers, so all of these require the configure tier.
+		register_rest_route(
+			self::NAMESPACE,
+			self::FEEDS_BASE,
+			array(
+				array(
+					'methods'             => 'GET',
+					'callback'            => array( $this, 'list_feeds' ),
+					'permission_callback' => array( $this, 'require_configure' ),
+				),
+				array(
+					'methods'             => 'POST',
+					'callback'            => array( $this, 'create_feed' ),
+					'permission_callback' => array( $this, 'require_configure' ),
+				),
+			)
+		);
+
+		// Register the literal `preview` route before the `{id}` pattern so the
+		// id matcher doesn't swallow it.
+		register_rest_route(
+			self::NAMESPACE,
+			self::FEEDS_BASE . '/preview',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'preview_feed' ),
+				'permission_callback' => array( $this, 'require_configure' ),
+				'args'                => array(
+					'kind' => array(
+						'type'     => 'string',
+						'required' => true,
+						'enum'     => array( 'eonet', 'rss' ),
+					),
+					'url'  => array(
+						'type'     => 'string',
+						'required' => true,
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			self::FEEDS_BASE . '/' . self::ID_PATTERN,
+			array(
+				array(
+					'methods'             => 'POST',
+					'callback'            => array( $this, 'update_feed' ),
+					'permission_callback' => array( $this, 'require_configure' ),
+				),
+				array(
+					'methods'             => 'DELETE',
+					'callback'            => array( $this, 'delete_feed' ),
+					'permission_callback' => array( $this, 'require_configure' ),
+				),
+			)
+		);
 	}
 
 	/**
@@ -247,6 +308,14 @@ final class PublisherController {
 	 */
 	public function require_publish(): bool {
 		return Capabilities::can_publish();
+	}
+
+	/**
+	 * Configure-tier gate (feed-connector management). The node restricts every
+	 * feed endpoint to admin/service callers, so publish tier is not enough.
+	 */
+	public function require_configure(): bool {
+		return Capabilities::can_configure();
 	}
 
 	/**
@@ -364,6 +433,89 @@ final class PublisherController {
 		$body = $this->normalize_event_review_body( (array) $request->get_json_params() );
 
 		return $this->respond( $client->review_event( (string) $request->get_param( 'id' ), $body ) );
+	}
+
+	/**
+	 * GET the feed-connector list.
+	 *
+	 * @return WP_REST_Response
+	 */
+	public function list_feeds(): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		return $this->respond( $client->list_feeds() );
+	}
+
+	/**
+	 * POST a new feed connector.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function create_feed( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		$body = $this->normalize_feed_body( (array) $request->get_json_params(), true );
+
+		return $this->respond( $client->create_feed( $body ) );
+	}
+
+	/**
+	 * POST a partial update to a feed connector (`kind` is immutable).
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function update_feed( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		$body = $this->normalize_feed_body( (array) $request->get_json_params(), false );
+
+		return $this->respond( $client->update_feed( (string) $request->get_param( 'id' ), $body ) );
+	}
+
+	/**
+	 * DELETE a feed connector.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function delete_feed( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		return $this->respond( $client->delete_feed( (string) $request->get_param( 'id' ) ) );
+	}
+
+	/**
+	 * GET a dry-run preview of a feed source (writes nothing).
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function preview_feed( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		$query = array(
+			'kind' => (string) $request->get_param( 'kind' ),
+			'url'  => (string) $request->get_param( 'url' ),
+		);
+
+		return $this->respond( $client->preview_feed( $query ) );
 	}
 
 	/**
@@ -768,5 +920,43 @@ final class PublisherController {
 		}
 
 		return $edits;
+	}
+
+	/**
+	 * Reduce a caller-supplied feed-connector body to the allowlisted shape the
+	 * node accepts. `kind` is only meaningful on create (it is immutable
+	 * afterwards), so it is dropped on update. Unknown keys and server-owned
+	 * fields (`id`, timestamps, `lastRun*`) are dropped; the node performs the
+	 * authoritative validation (length limits, URL scheme) and returns field
+	 * errors we pass through.
+	 *
+	 * @param array<string,mixed> $raw       Decoded JSON body.
+	 * @param bool                $is_create Whether this is a create (keeps `kind`).
+	 * @return array<string,mixed>
+	 */
+	public function normalize_feed_body( array $raw, bool $is_create ): array {
+		$out = array();
+
+		if ( $is_create && isset( $raw['kind'] ) && in_array( $raw['kind'], array( 'eonet', 'rss' ), true ) ) {
+			$out['kind'] = (string) $raw['kind'];
+		}
+
+		foreach ( array( 'label', 'url' ) as $key ) {
+			if ( array_key_exists( $key, $raw ) && ( is_string( $raw[ $key ] ) || is_numeric( $raw[ $key ] ) ) ) {
+				$out[ $key ] = trim( (string) $raw[ $key ] );
+			}
+		}
+
+		// Nullable: null clears the category; a scalar sets it. Anything else
+		// (array/object) is dropped rather than stringified to "Array".
+		if ( array_key_exists( 'category', $raw ) && ( null === $raw['category'] || is_scalar( $raw['category'] ) ) ) {
+			$out['category'] = null === $raw['category'] ? null : trim( (string) $raw['category'] );
+		}
+
+		if ( array_key_exists( 'enabled', $raw ) ) {
+			$out['enabled'] = rest_sanitize_boolean( $raw['enabled'] );
+		}
+
+		return $out;
 	}
 }

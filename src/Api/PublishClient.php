@@ -304,6 +304,69 @@ final class PublishClient {
 	}
 
 	/**
+	 * `GET /api/v1/publish/feeds` — list every feed connector (enabled and
+	 * paused). The node restricts this to admin/service callers, so the plugin
+	 * gates it at the configure tier. Each item is a full connector object with
+	 * its last-run status.
+	 *
+	 * @return array<string,mixed>
+	 */
+	public function list_feeds(): array {
+		return $this->send( 'GET', '/api/v1/publish/feeds' );
+	}
+
+	/**
+	 * `POST /api/v1/publish/feeds` — create a feed connector.
+	 *
+	 * @param array<string,mixed> $body `{ kind:'eonet'|'rss', label, url, category?, enabled? }`.
+	 * @return array<string,mixed>
+	 */
+	public function create_feed( array $body ): array {
+		return $this->send( 'POST', '/api/v1/publish/feeds', $body );
+	}
+
+	/**
+	 * `POST /api/v1/publish/feeds/:id` — partially update a feed connector. The
+	 * node applies this as a patch (it is a POST, not a `PUT`); `kind` is
+	 * immutable and cannot be changed after creation.
+	 *
+	 * @param string              $id   Feed connector id.
+	 * @param array<string,mixed> $body `{ label?, url?, category?, enabled? }`.
+	 * @return array<string,mixed>
+	 */
+	public function update_feed( string $id, array $body ): array {
+		return $this->send( 'POST', '/api/v1/publish/feeds/' . rawurlencode( $id ), $body );
+	}
+
+	/**
+	 * `DELETE /api/v1/publish/feeds/:id` — remove a feed connector. Events it
+	 * already ingested remain; only the connector is deleted.
+	 *
+	 * @param string $id Feed connector id.
+	 * @return array<string,mixed>
+	 */
+	public function delete_feed( string $id ): array {
+		return $this->send( 'DELETE', '/api/v1/publish/feeds/' . rawurlencode( $id ) );
+	}
+
+	/**
+	 * `GET /api/v1/publish/feeds/preview?kind=&url=` — dry-run a feed source
+	 * without saving it: reports how many items were fetched, how many are
+	 * mappable to events, and a small sample. Writes nothing.
+	 *
+	 * @param array<string,string> $query `{ kind, url }`.
+	 * @return array<string,mixed>
+	 */
+	public function preview_feed( array $query ): array {
+		$path = '/api/v1/publish/feeds/preview';
+		if ( ! empty( $query ) ) {
+			$path .= '?' . http_build_query( $query );
+		}
+
+		return $this->send( 'GET', $path );
+	}
+
+	/**
 	 * Perform a request and normalise the response.
 	 *
 	 * @param string                   $method HTTP method.
