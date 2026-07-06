@@ -17,13 +17,13 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Maps WordPress capabilities to the Terraviz publish tier a WP user is
  * *intended* to have through the plugin.
  *
- * This is deliberately **local authorization only**. When the plugin later
- * publishes (Phase 3), every call is proxied through PHP carrying **one**
- * shared service-token identity — Terraviz sees the same `service` publisher
- * no matter which WP user acted (upstream WORDPRESS_INTEGRATION_PLAN §5,
- * Option 1). So the per-user gate has to live here, in WordPress: this class
- * decides who in `wp-admin` may trigger which publish action. It performs no
- * catalog mutation and makes no network calls.
+ * This is deliberately **local authorization only**. When the plugin
+ * publishes, every call is proxied through PHP carrying **one** shared
+ * service-token identity — Terraviz sees the same `service` publisher no matter
+ * which WP user acted (upstream WORDPRESS_INTEGRATION_PLAN §5, Option 1). So the
+ * per-user gate has to live here, in WordPress: this class decides who in
+ * `wp-admin` may trigger which publish action. It performs no catalog mutation
+ * and makes no network calls.
  *
  * The custom `manage_terraviz` capability is the plugin's own admin gate,
  * granted to `administrator` on activation so a site owner can delegate

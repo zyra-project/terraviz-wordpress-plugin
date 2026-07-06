@@ -2,7 +2,7 @@
 	"$schema": "https://schemas.wp.org/trunk/block.json",
 	"apiVersion": 3,
 	"name": "terraviz/hero",
-	"version": "0.1.0",
+	"version": "0.3.0",
 	"title": "Terraviz Right-Now Hero",
 	"category": "embed",
 	"icon": "star-filled",

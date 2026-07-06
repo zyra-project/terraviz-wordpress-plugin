@@ -4,7 +4,7 @@ Tags: terraviz, globe, embed, visualization, iframe
 Requires at least: 6.1
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.1.0
+Stable tag: 0.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -44,7 +44,7 @@ This plugin communicates with a **Terraviz node** — a third-party service, by 
 
 No third-party assets are bundled or loaded from CDNs, and the plugin makes no other outbound calls.
 
-Using a Terraviz node is subject to that node's terms and privacy policy — Terms of service: [ADD TERRAVIZ TOS URL] · Privacy policy: [ADD TERRAVIZ PRIVACY URL]. For the default node, see https://terraviz.zyra-project.org.
+Using a Terraviz node is subject to that node's privacy policy. For the default node, see https://terraviz.zyra-project.org/privacy.
 
 == Installation ==
 
@@ -61,7 +61,7 @@ No. Every block, shortcode, and URL embed works with no credentials — embeddin
 
 = How do I publish or manage datasets? =
 
-Publishing is optional. An administrator stores a Terraviz **service token** under **Settings → Terraviz**, after which the **Terraviz** menu in wp-admin opens a Publisher dashboard where permitted users can create, edit, publish, retract, and delete datasets and upload their media. With no token stored, the dashboard is inert and reports that a credential is not configured.
+Publishing is optional. An administrator stores a Terraviz **service token** under **Settings → Terraviz**, after which the **Terraviz** menu in wp-admin opens a Publisher dashboard where permitted users can create, edit, publish, retract, and delete datasets and upload their media. With no token stored, the dashboard is disabled and reports that a credential is not configured.
 
 = Who is allowed to publish? =
 
@@ -103,6 +103,13 @@ Attributes: `dataset`, `tour`, `catalog`, `hero`, `related`, `origin`, `terrain`
 
 == Changelog ==
 
+= 0.3.0 =
+* Publisher dashboard in wp-admin: list datasets by lifecycle state, create and edit drafts, and publish, retract, or delete them — all proxied server-side under a single shared node credential, so the token never reaches the browser.
+* Direct-to-storage asset upload for dataset media, via short-lived presigned URLs (the file is hashed in the browser; bytes go straight to the node's storage).
+* WordPress-native authorization: a role-to-tier mapping (administrators configure, editors publish, authors draft) gates who may do what through the plugin.
+* Encrypted-at-rest Cloudflare Access service-token slot in the settings screen, plus a read-only "Verify credential" probe.
+* Custom `manage_terraviz` capability, granted to administrators on activation, so a site owner can delegate Terraviz configuration without full `manage_options`.
+
 = 0.1.0 =
 * Initial release — Phase 1 zero-credential embeds.
 * Dataset, Tour, and Catalog blocks with server-side rendered, accessible fallbacks and lazy iframe loading.
@@ -114,6 +121,9 @@ Attributes: `dataset`, `tour`, `catalog`, `hero`, `related`, `origin`, `terrain`
 * PHP wire-contract types generated from Terraviz's published `/schema/v1` JSON Schema.
 
 == Upgrade Notice ==
+
+= 0.3.0 =
+Adds an optional publisher dashboard for managing Terraviz datasets from wp-admin. Embedding is unchanged and still needs no account; publishing is opt-in and requires an administrator to store a Terraviz service token.
 
 = 0.1.0 =
 Initial release.

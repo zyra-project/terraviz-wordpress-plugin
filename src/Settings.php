@@ -133,10 +133,9 @@ final class Settings {
 	}
 
 	/**
-	 * Register the Phase-2 publishing-preview settings: the capability map and
-	 * the inert service-token slot. Only wired for users who hold the plugin's
-	 * `manage_terraviz` capability, so the credential UI never renders for a
-	 * lesser admin.
+	 * Register the publishing settings: the capability map and the service-token
+	 * slot. Only wired for users who hold the plugin's `manage_terraviz`
+	 * capability, so the credential UI never renders for a lesser admin.
 	 */
 	private function register_publishing(): void {
 		if ( ! current_user_can( Capabilities::MANAGE ) ) {
@@ -156,9 +155,9 @@ final class Settings {
 
 		add_settings_section(
 			'terraviz_publishing',
-			__( 'Publishing (preview — not yet active)', 'terraviz' ),
+			__( 'Publishing', 'terraviz' ),
 			function () {
-				echo '<p>' . esc_html__( 'Groundwork for a future publishing release. Nothing here can create, edit, or change Terraviz content yet: the plugin has no publish path. It only lets you map who may publish (once that ships) and store — then validate — a Terraviz service token.', 'terraviz' ) . '</p>';
+				echo '<p>' . esc_html__( 'Configure the optional publisher path: map which WordPress roles may draft versus publish, and store — then validate — a Terraviz service token. Once a token is saved, permitted users manage datasets from the Terraviz Publisher dashboard. Every write is proxied server-side under this one shared token; the token is never sent to the browser.', 'terraviz' ) . '</p>';
 			},
 			self::PAGE
 		);
@@ -564,7 +563,7 @@ final class Settings {
 	}
 
 	/**
-	 * The inert service-token slot: a client-id/secret pair, plus a "remove"
+	 * The service-token slot: a client-id/secret pair, plus a "remove"
 	 * checkbox. The stored secret is never echoed — only a "saved" marker.
 	 */
 	public function field_credential(): void {
@@ -613,7 +612,7 @@ final class Settings {
 
 		printf(
 			'<p class="description">%s</p>',
-			esc_html__( 'A Cloudflare Access service token (a Client ID + Client Secret pair). The secret is encrypted at rest and never sent to the browser. Stored but unused until a publishing release ships; use “Verify credential” below to confirm it works.', 'terraviz' )
+			esc_html__( 'A Cloudflare Access service token (a Client ID + Client Secret pair) that authenticates the publisher path. The secret is encrypted at rest and never sent to the browser. Use “Verify credential” below to confirm it works.', 'terraviz' )
 		);
 	}
 }
