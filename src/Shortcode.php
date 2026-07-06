@@ -44,11 +44,25 @@ final class Shortcode {
 	 * @return string
 	 */
 	public function render( $atts ): string {
+		$raw = is_array( $atts ) ? $atts : array();
+
+		// Support the bare boolean forms [terraviz catalog] and [terraviz hero]
+		// (WordPress passes these as unkeyed, integer-indexed values that
+		// shortcode_atts() would otherwise drop).
+		$bare = array();
+		foreach ( $raw as $bare_key => $bare_value ) {
+			if ( is_int( $bare_key ) ) {
+				$bare[ strtolower( (string) $bare_value ) ] = true;
+			}
+		}
+
 		$atts = shortcode_atts(
 			array(
 				'dataset'       => '',
 				'tour'          => '',
 				'catalog'       => '',
+				'hero'          => '',
+				'related'       => '',
 				'origin'        => '',
 				'terrain'       => '',
 				'labels'        => '',
@@ -68,7 +82,7 @@ final class Shortcode {
 			'terraviz'
 		);
 
-		// Determine selector: dataset > tour > catalog (grammar precedence).
+		// Determine selector: dataset > tour > related > catalog > hero.
 		$type = 'dataset';
 		$id   = '';
 		if ( '' !== (string) $atts['dataset'] ) {
@@ -77,8 +91,13 @@ final class Shortcode {
 		} elseif ( '' !== (string) $atts['tour'] ) {
 			$type = 'tour';
 			$id   = (string) $atts['tour'];
-		} elseif ( '' !== (string) $atts['catalog'] && ! in_array( strtolower( (string) $atts['catalog'] ), array( 'false', '0', 'no', 'off' ), true ) ) {
+		} elseif ( '' !== (string) $atts['related'] ) {
+			$type = 'related';
+			$id   = (string) $atts['related'];
+		} elseif ( isset( $bare['catalog'] ) || ( '' !== (string) $atts['catalog'] && ! in_array( strtolower( (string) $atts['catalog'] ), array( 'false', '0', 'no', 'off' ), true ) ) ) {
 			$type = 'catalog';
+		} elseif ( isset( $bare['hero'] ) || ( '' !== (string) $atts['hero'] && ! in_array( strtolower( (string) $atts['hero'] ), array( 'false', '0', 'no', 'off' ), true ) ) ) {
+			$type = 'hero';
 		}
 
 		$mapped = array(

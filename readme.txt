@@ -18,7 +18,7 @@ It is a **host-side adapter**, not a reimplementation: the globe runs inside an 
 
 **What it does**
 
-* Three Gutenberg blocks: **Dataset**, **Tour**, and **Catalog**.
+* Five Gutenberg blocks: **Dataset**, **Tour**, **Catalog**, **Right-Now Hero** (the node's featured dataset), and **Related Datasets** (a "more like this" rail).
 * A `[terraviz]` shortcode for the Classic Editor, sharing the same renderer as the blocks.
 * Automatic embeds when you paste a Terraviz dataset or tour URL.
 * A **server-side rendered fallback** under every embed — real title, abstract, thumbnail, and a link — so the content is indexable by search engines, visible without JavaScript, and accessible to screen readers.
@@ -61,10 +61,12 @@ For safety, a per-embed `origin` override changes which node the interactive glo
 `[terraviz dataset="hurricane-season-2024" terrain="on" rotate="on"]`
 `[terraviz tour="climate-futures"]`
 `[terraviz catalog="true"]`
+`[terraviz hero="true"]`
+`[terraviz related="hurricane-season-2024"]`
 
 The `dataset` and `tour` attributes accept a human-readable **slug** (e.g. `hurricane-season-2024`), a legacy id, or the canonical catalog id — you don't need to copy the long random id. You can also paste a Terraviz dataset/tour URL on its own line to auto-embed it.
 
-Attributes: `dataset`, `tour`, `catalog`, `origin`, `terrain`, `labels`, `borders`, `rotate`, `chat`, `layout` (1|2|4), `aspect` (e.g. `16:9`), `poster`, `interactive`, `heading` (h2–h6), `show_title`, `show_abstract`.
+Attributes: `dataset`, `tour`, `catalog`, `hero`, `related`, `origin`, `terrain`, `labels`, `borders`, `rotate`, `chat`, `layout` (1|2|4), `aspect` (e.g. `16:9`), `poster`, `interactive`, `heading` (h2–h6), `show_title`, `show_abstract`.
 
 == Changelog ==
 

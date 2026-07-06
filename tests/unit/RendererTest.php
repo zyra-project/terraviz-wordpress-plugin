@@ -317,4 +317,109 @@ class RendererTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'Hurricane Season 2024', $html );
 		$this->assertStringContainsString( $node . '/dataset/INTERNAL_SOS_768', $html );
 	}
+
+	public function test_hero_renders_the_featured_dataset(): void {
+		$renderer = $this->renderer_with(
+			array(
+				'/api/v1/featured-hero'             => array( 'hero' => array( 'id' => 'INTERNAL_SOS_768' ) ),
+				'/api/v1/datasets/INTERNAL_SOS_768' => $this->dataset_payload(),
+			)
+		);
+
+		$html = $renderer->render( array( 'type' => 'hero' ) );
+
+		// Rendered as a dataset embed for the hero's id.
+		$this->assertStringContainsString( 'Hurricane Season 2024', $html );
+		$this->assertStringContainsString( 'dataset=INTERNAL_SOS_768', $html );
+		$this->assertStringContainsString( 'data-terraviz-src=', $html );
+	}
+
+	public function test_hero_without_a_hero_is_a_notice(): void {
+		$renderer = $this->renderer_with(
+			array( '/api/v1/featured-hero' => array( 'hero' => null ) )
+		);
+
+		$html = $renderer->render( array( 'type' => 'hero' ) );
+
+		$this->assertStringContainsString( 'terraviz-embed--notice', $html );
+		$this->assertStringNotContainsString( 'data-terraviz-src=', $html );
+	}
+
+	public function test_related_renders_a_card_rail(): void {
+		$renderer = $this->renderer_with(
+			array(
+				'/api/v1/datasets/INTERNAL_SOS_768/related' => array(
+					'datasets' => array(
+						array(
+							'id'               => 'REL_1',
+							'title'            => 'Related One',
+							'abstract_snippet' => 'A [linked](https://x.example) snippet.',
+						),
+						array(
+							'id'    => 'REL_2',
+							'title' => 'Related Two',
+						),
+					),
+				),
+			)
+		);
+
+		$html = $renderer->render(
+			array(
+				'type' => 'related',
+				'id'   => 'INTERNAL_SOS_768',
+			)
+		);
+
+		$this->assertStringContainsString( 'terraviz-embed__rail', $html );
+		$this->assertStringContainsString( 'Related One', $html );
+		$this->assertStringContainsString( 'Related Two', $html );
+		// Each card links to the canonical dataset page.
+		$this->assertStringContainsString( self::ORIGIN . '/dataset/REL_1', $html );
+		// Markdown link syntax in the snippet is flattened to plain text.
+		$this->assertStringContainsString( 'A linked snippet.', $html );
+		$this->assertStringNotContainsString( '](https://x.example)', $html );
+		// It's a rail of links, not a globe.
+		$this->assertStringNotContainsString( 'data-terraviz-src=', $html );
+	}
+
+	public function test_related_without_results_is_a_notice(): void {
+		$renderer = $this->renderer_with(
+			array( '/api/v1/datasets/INTERNAL_SOS_768/related' => array( 'datasets' => array() ) )
+		);
+
+		$html = $renderer->render(
+			array(
+				'type' => 'related',
+				'id'   => 'INTERNAL_SOS_768',
+			)
+		);
+
+		$this->assertStringContainsString( 'terraviz-embed--notice', $html );
+	}
+
+	public function test_related_with_only_unusable_rows_is_a_notice(): void {
+		// The endpoint returned rows, but none carry an `id` — so no card can be
+		// built. That must fall back to the notice, not emit an empty rail.
+		$renderer = $this->renderer_with(
+			array(
+				'/api/v1/datasets/INTERNAL_SOS_768/related' => array(
+					'datasets' => array(
+						array( 'title' => 'Missing an id' ),
+						array( 'abstract_snippet' => 'Also no id.' ),
+					),
+				),
+			)
+		);
+
+		$html = $renderer->render(
+			array(
+				'type' => 'related',
+				'id'   => 'INTERNAL_SOS_768',
+			)
+		);
+
+		$this->assertStringContainsString( 'terraviz-embed--notice', $html );
+		$this->assertStringNotContainsString( 'terraviz-embed__rail', $html );
+	}
 }

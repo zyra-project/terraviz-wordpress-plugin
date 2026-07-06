@@ -1,0 +1,25 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "terraviz/related",
+	"version": "0.1.0",
+	"title": "Terraviz Related Datasets",
+	"category": "embed",
+	"icon": "grid-view",
+	"description": "Show a horizontal rail of datasets related to a chosen Terraviz dataset (\"more like this\").",
+	"keywords": [ "terraviz", "related", "more like this", "noaa" ],
+	"textdomain": "terraviz",
+	"supports": {
+		"html": false,
+		"align": [ "wide", "full" ],
+		"anchor": true
+	},
+	"attributes": {
+		"id": { "type": "string", "default": "" },
+		"origin": { "type": "string", "default": "" },
+		"heading": { "type": "string", "default": "h3" },
+		"showTitle": { "type": "boolean", "default": true }
+	},
+	"editorScript": "file:./index.js",
+	"style": "terraviz-embed"
+}

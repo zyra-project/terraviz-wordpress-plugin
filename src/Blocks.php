@@ -32,6 +32,8 @@ final class Blocks {
 		'dataset' => 'dataset',
 		'tour'    => 'tour',
 		'catalog' => 'catalog',
+		'hero'    => 'hero',
+		'related' => 'related',
 	);
 
 	/**
