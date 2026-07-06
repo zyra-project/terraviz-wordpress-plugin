@@ -155,14 +155,31 @@ Known limitation (upstream §5 Option 1): actions are attributed to the shared
 
 ---
 
-## Phase 4 — post / blog bridge ⏳ (plugin repo)
+## Phase 4 — post / blog bridge ✅ (plugin repo)
 
-- A **"cite Terraviz data" block** — a specialization of the Phase-1 blocks —
-  to drop a live dataset/tour/related-rail into a normal WP post.
-- **Optional one-way** WP-post → Terraviz-blog-*stub* sync for in-globe
-  discovery (`POST /api/v1/publish/blog`): a short markdown summary + a
-  canonical link back to the WP post, carrying dataset/tour grounding. WP stays
-  the source of truth.
+- **Cite Terraviz data in posts** — the existing Phase-1 blocks already embed a
+  live dataset/tour/related-rail into any post, and the sync reads them as the
+  citation source (no separate block needed).
+- **One-way** WP-post → Terraviz-blog-*stub* sync for in-globe discovery. WP
+  stays the source of truth; two-way body sync is a non-goal.
+
+| Item | Status | Where |
+|---|---|---|
+| Blog proxy methods (`create`/`update`/`get`/`publish`·`unpublish` action) | ✅ | `src/Api/PublishClient.php` |
+| Sync engine: opt-in post meta; `wp_after_insert_post` decides sync/unsync (gated on `can_publish` + credential) and defers to a near-immediate cron event; create→publish / `PUT`-update / unpublish with **id-in-post-meta idempotency** (`404` → recreate) | ✅ | `src/Blog/Sync.php` |
+| Grounding: `datasetIds`/`tourId` scanned from the post's Terraviz blocks (`parse_blocks`), resolved to canonical ids | ✅ | `src/Blog/Sync.php` |
+| Body: markdown **summary + canonical link back** to the WP post (allowlist-safe) | ✅ | `src/Blog/Sync.php` |
+| Editor "Show this post in Terraviz" document panel (publish-tier only), with synced status/link | ✅ | `src/Blog/PostPanel.php`, `blocks/post-panel/*` |
+
+Verified blog wire contract (upstream `main`): body is
+`{ title, bodyMd, summary?, datasetIds?, tourId?, eventId? }`; create is
+draft-on-create then `POST …/blog/:id {action:'publish'}`; **no server dedup**
+(the plugin owns idempotency via the returned `post.id`); grounding is
+write-permissive, read-strict.
+
+> **Caveat:** the blog API is an **internal** publisher API — **not** part of the
+> versioned `/schema/v1` contracts and absent from the protocol docs. It is less
+> stable than the read/embed path; guard with `tests/smoke/`.
 
 ---
 

@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Phase 4 — post/blog bridge (one-way WP → Terraviz discovery).
+
+### Added
+- Opt a published WordPress post into "Show this post in Terraviz" from a
+  block-editor document panel (publish-tier users). On save, the plugin syncs a
+  Terraviz blog **stub** — a short markdown summary plus a canonical link back
+  to the WP post — carrying the datasets/tours cited by the Terraviz blocks in
+  the post. WordPress stays the source of truth; there is no two-way body sync.
+- The sync owns idempotency (the blog API has none): it stores the Terraviz
+  post id in WP post meta and updates in place on re-sync, recreating only if
+  the stub was removed upstream. Remote calls are deferred to a near-immediate
+  cron event so saving a post never blocks on the network. Turning the toggle
+  off, unpublishing, or deleting the post takes the stub down.
+
+## [Unreleased — Phase 3b]
+
 Phase 3b — asset upload for the publisher dashboard.
 
 ### Added
