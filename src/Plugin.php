@@ -118,9 +118,11 @@ final class Plugin {
 	 * Options and roles are per-site, so on a network-wide multisite activation
 	 * we apply them to every site (mirroring `uninstall.php`).
 	 *
-	 * @param bool $network_wide True when activated network-wide on multisite.
+	 * @param bool|null $network_wide True when activated network-wide on multisite.
+	 *                                Nullable because some callers (e.g. WP-CLI)
+	 *                                invoke the `activate_{plugin}` hook with null.
 	 */
-	public static function on_activate( bool $network_wide = false ): void {
+	public static function on_activate( ?bool $network_wide = false ): void {
 		self::for_each_site(
 			static function (): void {
 				if ( false === get_option( Support\Options::OPTION, false ) ) {
@@ -129,7 +131,7 @@ final class Plugin {
 
 				Support\Capabilities::grant();
 			},
-			$network_wide
+			(bool) $network_wide
 		);
 	}
 
@@ -139,15 +141,17 @@ final class Plugin {
 	 * stored credential (if any) is left in place — deactivation is not
 	 * uninstall.
 	 *
-	 * @param bool $network_wide True when deactivated network-wide on multisite.
+	 * @param bool|null $network_wide True when deactivated network-wide on multisite.
+	 *                                Nullable because some callers (e.g. WP-CLI)
+	 *                                invoke the `deactivate_{plugin}` hook with null.
 	 */
-	public static function on_deactivate( bool $network_wide = false ): void {
+	public static function on_deactivate( ?bool $network_wide = false ): void {
 		self::for_each_site(
 			static function (): void {
 				Catalog::flush();
 				Support\Capabilities::revoke();
 			},
-			$network_wide
+			(bool) $network_wide
 		);
 	}
 
