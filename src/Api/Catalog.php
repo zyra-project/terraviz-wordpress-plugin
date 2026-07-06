@@ -31,6 +31,26 @@ final class Catalog {
 	private const PREFIX = 'terraviz_';
 
 	/**
+	 * Sentinel returned by {@see read_cache()} for an absent key, so a genuine
+	 * cache miss is distinguishable from a cached empty/negative payload.
+	 */
+	private const CACHE_MISS = "\0terraviz_cache_miss\0";
+
+	/**
+	 * Encoding tags for a stored payload. The trailing digit is a format
+	 * version — bump it to invalidate every cached value after a format change.
+	 */
+	private const ENC_GZIP = 'tvz-gz1:';
+	private const ENC_RAW  = 'tvz-rw1:';
+
+	/**
+	 * Only compress payloads at least this many bytes of JSON; smaller values
+	 * (single datasets, negative markers) are stored raw, since gzip + base64
+	 * would only inflate them.
+	 */
+	private const COMPRESS_MIN_BYTES = 2048;
+
+	/**
 	 * The read client.
 	 *
 	 * @var JsonReader
@@ -78,8 +98,8 @@ final class Catalog {
 		}
 
 		$key    = $this->key( 'dataset', $id );
-		$cached = get_transient( $key );
-		if ( is_array( $cached ) ) {
+		$cached = $this->read_cache( $key );
+		if ( self::CACHE_MISS !== $cached ) {
 			return empty( $cached ) ? null : WireDataset::from_array( $cached );
 		}
 
@@ -91,11 +111,11 @@ final class Catalog {
 				return $from_catalog;
 			}
 			// Cache a negative result briefly to avoid hammering the node.
-			set_transient( $key, array(), min( $this->ttl, 5 * MINUTE_IN_SECONDS ) );
+			$this->write_cache( $key, array(), min( $this->ttl, 5 * MINUTE_IN_SECONDS ) );
 			return null;
 		}
 
-		set_transient( $key, $data, $this->ttl );
+		$this->write_cache( $key, $data, $this->ttl );
 
 		return WireDataset::from_array( $data );
 	}
@@ -105,18 +125,18 @@ final class Catalog {
 	 */
 	public function get_catalog(): ?CatalogResponse {
 		$key    = $this->key( 'catalog' );
-		$cached = get_transient( $key );
-		if ( is_array( $cached ) ) {
+		$cached = $this->read_cache( $key );
+		if ( self::CACHE_MISS !== $cached ) {
 			return empty( $cached ) ? null : CatalogResponse::from_array( $cached );
 		}
 
 		$data = $this->client->get_json( '/api/v1/catalog' );
 		if ( null === $data ) {
-			set_transient( $key, array(), min( $this->ttl, 5 * MINUTE_IN_SECONDS ) );
+			$this->write_cache( $key, array(), min( $this->ttl, 5 * MINUTE_IN_SECONDS ) );
 			return null;
 		}
 
-		set_transient( $key, $data, $this->ttl );
+		$this->write_cache( $key, $data, $this->ttl );
 
 		return CatalogResponse::from_array( $data );
 	}
@@ -131,15 +151,15 @@ final class Catalog {
 	 */
 	public function get_featured_hero(): ?array {
 		$key    = $this->key( 'hero' );
-		$cached = get_transient( $key );
-		if ( is_array( $cached ) ) {
+		$cached = $this->read_cache( $key );
+		if ( self::CACHE_MISS !== $cached ) {
 			return empty( $cached ) ? null : $cached;
 		}
 
 		$data = $this->client->get_json( '/api/v1/featured-hero' );
 		$hero = ( is_array( $data ) && isset( $data['hero'] ) && is_array( $data['hero'] ) ) ? $data['hero'] : null;
 
-		set_transient( $key, null === $hero ? array() : $hero, min( $this->ttl, 5 * MINUTE_IN_SECONDS ) );
+		$this->write_cache( $key, null === $hero ? array() : $hero, min( $this->ttl, 5 * MINUTE_IN_SECONDS ) );
 
 		return $hero;
 	}
@@ -160,15 +180,15 @@ final class Catalog {
 		}
 
 		$key    = $this->key( 'related', $id );
-		$cached = get_transient( $key );
-		if ( is_array( $cached ) ) {
-			return $cached;
+		$cached = $this->read_cache( $key );
+		if ( self::CACHE_MISS !== $cached ) {
+			return is_array( $cached ) ? $cached : array();
 		}
 
 		$data = $this->client->get_json( '/api/v1/datasets/' . rawurlencode( $id ) . '/related' );
 		$rows = ( is_array( $data ) && isset( $data['datasets'] ) && is_array( $data['datasets'] ) ) ? array_values( $data['datasets'] ) : array();
 
-		set_transient( $key, $rows, $this->ttl );
+		$this->write_cache( $key, $rows, $this->ttl );
 
 		return $rows;
 	}
@@ -221,6 +241,114 @@ final class Catalog {
 		 * cache can be cleared too.
 		 */
 		do_action( 'terraviz_cache_flushed' );
+	}
+
+	/**
+	 * Read a cached payload, transparently decoding the stored form.
+	 *
+	 * Returns {@see CACHE_MISS} when the key is absent or the stored value is
+	 * unreadable (so the caller re-fetches), or the decoded array otherwise —
+	 * which may be empty for a negative-cache marker.
+	 *
+	 * @param string $key Transient key.
+	 * @return array<int|string,mixed>|string The decoded array, or CACHE_MISS.
+	 */
+	private function read_cache( string $key ) {
+		$stored = get_transient( $key );
+
+		if ( false === $stored ) {
+			return self::CACHE_MISS;
+		}
+
+		// Back-compat: a pre-compression cache stored the decoded array (and the
+		// empty-array negative marker) directly. Honour it as a hit so an
+		// upgrade doesn't stampede the node until every entry naturally expires.
+		if ( is_array( $stored ) ) {
+			return $stored;
+		}
+
+		if ( is_string( $stored ) ) {
+			$decoded = $this->decode( $stored );
+			return null === $decoded ? self::CACHE_MISS : $decoded;
+		}
+
+		return self::CACHE_MISS;
+	}
+
+	/**
+	 * Encode and store a payload in a transient.
+	 *
+	 * @param string                  $key  Transient key.
+	 * @param array<int|string,mixed> $data Payload to cache.
+	 * @param int                     $ttl  Lifetime in seconds.
+	 */
+	private function write_cache( string $key, array $data, int $ttl ): void {
+		set_transient( $key, $this->encode( $data ), $ttl );
+	}
+
+	/**
+	 * Encode a payload for transient storage.
+	 *
+	 * The catalog envelope is large (100s of KB). Stored as a decoded array it
+	 * serialises even larger, which can exceed an object cache's per-item limit
+	 * (Memcached defaults to 1 MB) — the write then silently fails and every
+	 * request re-fetches from the node. Compressing the JSON keeps it small, and
+	 * base64 keeps the bytes 7-bit clean so a DB-backed transient (a utf8mb4
+	 * TEXT column) can't mangle raw deflate output.
+	 *
+	 * @param array<int|string,mixed> $data Payload.
+	 */
+	private function encode( array $data ): string {
+		$json = wp_json_encode( $data );
+		if ( ! is_string( $json ) ) {
+			$json = '[]';
+		}
+
+		if ( strlen( $json ) >= self::COMPRESS_MIN_BYTES && function_exists( 'gzcompress' ) ) {
+			$gz = gzcompress( $json, 6 );
+			if ( false !== $gz ) {
+				// base64 for 7-bit-safe transient storage, not obfuscation.
+				// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+				return self::ENC_GZIP . base64_encode( $gz );
+			}
+		}
+
+		return self::ENC_RAW . $json;
+	}
+
+	/**
+	 * Decode a stored payload written by {@see encode()}. Returns null when the
+	 * value is in an unknown format or fails to inflate/parse, so the caller
+	 * treats it as a miss and re-fetches.
+	 *
+	 * @param string $stored Stored transient value.
+	 * @return array<int|string,mixed>|null
+	 */
+	private function decode( string $stored ): ?array {
+		if ( 0 === strncmp( $stored, self::ENC_GZIP, strlen( self::ENC_GZIP ) ) ) {
+			if ( ! function_exists( 'gzuncompress' ) ) {
+				return null;
+			}
+			// Reverses encode()'s base64; strict mode rejects malformed input.
+			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode
+			$bin = base64_decode( substr( $stored, strlen( self::ENC_GZIP ) ), true );
+			if ( false === $bin ) {
+				return null;
+			}
+			$json = gzuncompress( $bin );
+		} elseif ( 0 === strncmp( $stored, self::ENC_RAW, strlen( self::ENC_RAW ) ) ) {
+			$json = substr( $stored, strlen( self::ENC_RAW ) );
+		} else {
+			return null;
+		}
+
+		if ( ! is_string( $json ) ) {
+			return null;
+		}
+
+		$data = json_decode( $json, true );
+
+		return is_array( $data ) ? $data : null;
 	}
 
 	/**

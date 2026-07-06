@@ -30,6 +30,14 @@ final class FakeReader implements JsonReader {
 	private $responses;
 
 	/**
+	 * Number of get_json() calls, so tests can assert the cache prevents
+	 * re-fetching.
+	 *
+	 * @var int
+	 */
+	public $call_count = 0;
+
+	/**
 	 * @param string                                 $origin    Node origin.
 	 * @param array<string,array<string,mixed>|null> $responses path => body.
 	 */
@@ -49,6 +57,7 @@ final class FakeReader implements JsonReader {
 	 * @inheritDoc
 	 */
 	public function get_json( string $path, array $query = array() ): ?array {
+		++$this->call_count;
 		$key = '/' . ltrim( $path, '/' );
 
 		return array_key_exists( $key, $this->responses ) ? $this->responses[ $key ] : null;
