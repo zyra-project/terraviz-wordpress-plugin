@@ -15,11 +15,20 @@
 
 	var SELECTOR = '.terraviz-embed__media[data-terraviz-src]';
 
-	// Fullscreen support varies by vendor; resolve the available methods once.
-	function fullscreenSupported() {
-		return !! (
-			document.fullscreenEnabled || document.webkitFullscreenEnabled
-		);
+	// Align feature detection with the methods we actually call: require the
+	// element's request method to exist, and — when the browser exposes the
+	// enabled flag (fullscreen may be blocked by permissions policy) — honour it.
+	function fullscreenSupported( el ) {
+		if ( ! ( el.requestFullscreen || el.webkitRequestFullscreen ) ) {
+			return false;
+		}
+		if ( typeof document.fullscreenEnabled === 'boolean' ) {
+			return document.fullscreenEnabled;
+		}
+		if ( typeof document.webkitFullscreenEnabled === 'boolean' ) {
+			return document.webkitFullscreenEnabled;
+		}
+		return true;
 	}
 
 	function fullscreenElement() {
@@ -54,7 +63,11 @@
 
 	// A single toggle button, overlaid on the globe once it has loaded.
 	function addFullscreenButton( media ) {
-		if ( ! fullscreenSupported() ) {
+		if ( ! fullscreenSupported( media ) ) {
+			return;
+		}
+		// Guard against a second injection (e.g. an iframe that fires load twice).
+		if ( media.querySelector( '.terraviz-embed__fullscreen' ) ) {
 			return;
 		}
 
@@ -123,15 +136,19 @@
 		var iframe = buildIframe( media );
 		var button = media.querySelector( '.terraviz-embed__load' );
 
+		// Offer a fullscreen toggle only once the globe has actually loaded, so
+		// the button never appears over an iframe that failed to load
+		// (network / CSP). Attach before insertion so the load event isn't missed.
+		iframe.addEventListener( 'load', function () {
+			addFullscreenButton( media );
+		} );
+
 		// Swap the poster button for the iframe.
 		if ( button && button.parentNode ) {
 			button.parentNode.replaceChild( iframe, button );
 		} else {
 			media.appendChild( iframe );
 		}
-
-		// Offer a fullscreen toggle now that a real globe is present.
-		addFullscreenButton( media );
 
 		// Move keyboard focus into the freshly loaded globe for a11y.
 		try {
