@@ -334,4 +334,50 @@ class PublishClientTest extends WP_UnitTestCase {
 		// The bodyless completion must serialise to `{}`, not `[]`.
 		$this->assertSame( '{}', $this->captured_args['body'] );
 	}
+
+	public function test_create_blog_posts_to_collection(): void {
+		$this->canned = $this->respond(
+			201,
+			(string) wp_json_encode(
+				array(
+					'post' => array(
+						'id'   => 'B1',
+						'slug' => 's',
+					),
+				)
+			)
+		);
+
+		$result = $this->client()->create_blog(
+			array(
+				'title'  => 'T',
+				'bodyMd' => 'body',
+			)
+		);
+
+		$this->assertTrue( $result['ok'] );
+		$this->assertSame( 'B1', $result['data']['post']['id'] );
+		$this->assertSame( 'POST', $this->captured_args['method'] );
+		$this->assertStringEndsWith( '/publish/blog', $this->captured_url );
+		$this->assertSame( 'T', json_decode( $this->captured_args['body'], true )['title'] );
+	}
+
+	public function test_update_blog_puts_to_item(): void {
+		$this->canned = $this->respond( 200, (string) wp_json_encode( array( 'post' => array( 'id' => 'B1' ) ) ) );
+
+		$this->client()->update_blog( 'B1', array( 'title' => 'T2' ) );
+
+		$this->assertSame( 'PUT', $this->captured_args['method'] );
+		$this->assertStringEndsWith( '/publish/blog/B1', $this->captured_url );
+	}
+
+	public function test_set_blog_action_posts_action_body(): void {
+		$this->canned = $this->respond( 200, (string) wp_json_encode( array( 'post' => array( 'id' => 'B1' ) ) ) );
+
+		$this->client()->set_blog_action( 'B1', 'publish' );
+
+		$this->assertSame( 'POST', $this->captured_args['method'] );
+		$this->assertStringEndsWith( '/publish/blog/B1', $this->captured_url );
+		$this->assertSame( 'publish', json_decode( $this->captured_args['body'], true )['action'] );
+	}
 }

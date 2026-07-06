@@ -56,6 +56,12 @@ final class Plugin {
 		add_action( 'rest_api_init', array( new Rest\SearchController(), 'register' ) );
 		add_action( 'rest_api_init', array( new Rest\PublisherController(), 'register' ) );
 
+		( new Blog\Sync() )->register();
+
+		if ( is_admin() ) {
+			( new Blog\PostPanel() )->register();
+		}
+
 		if ( is_admin() ) {
 			$settings = new Settings();
 			add_action( 'admin_menu', array( $settings, 'add_page' ) );

@@ -212,6 +212,51 @@ final class PublishClient {
 	}
 
 	/**
+	 * `POST /api/v1/publish/blog` — create a blog-post stub (born draft).
+	 *
+	 * @param array<string,mixed> $body `{ title, bodyMd, summary?, datasetIds?, tourId?, eventId? }`.
+	 * @return array<string,mixed>
+	 */
+	public function create_blog( array $body ): array {
+		return $this->send( 'POST', '/api/v1/publish/blog', $body );
+	}
+
+	/**
+	 * `PUT /api/v1/publish/blog/:id` — update a blog stub in place (slug and
+	 * status are preserved server-side).
+	 *
+	 * @param string              $id   Blog post id (ULID).
+	 * @param array<string,mixed> $body Fields to change.
+	 * @return array<string,mixed>
+	 */
+	public function update_blog( string $id, array $body ): array {
+		return $this->send( 'PUT', '/api/v1/publish/blog/' . rawurlencode( $id ), $body );
+	}
+
+	/**
+	 * `GET /api/v1/publish/blog/:id` — fetch a blog stub (used to detect a
+	 * stub deleted upstream).
+	 *
+	 * @param string $id Blog post id (ULID).
+	 * @return array<string,mixed>
+	 */
+	public function get_blog( string $id ): array {
+		return $this->send( 'GET', '/api/v1/publish/blog/' . rawurlencode( $id ) );
+	}
+
+	/**
+	 * `POST /api/v1/publish/blog/:id` with `{ action }` — publish or unpublish
+	 * a blog stub.
+	 *
+	 * @param string $id     Blog post id (ULID).
+	 * @param string $action `publish` or `unpublish`.
+	 * @return array<string,mixed>
+	 */
+	public function set_blog_action( string $id, string $action ): array {
+		return $this->send( 'POST', '/api/v1/publish/blog/' . rawurlencode( $id ), array( 'action' => $action ) );
+	}
+
+	/**
 	 * Perform a request and normalise the response.
 	 *
 	 * @param string                   $method HTTP method.

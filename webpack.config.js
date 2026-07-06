@@ -16,5 +16,11 @@ module.exports = {
 	entry: {
 		...baseEntry,
 		'admin/index': path.resolve( process.cwd(), 'blocks', 'admin', 'index.js' ),
+		'post-panel/index': path.resolve(
+			process.cwd(),
+			'blocks',
+			'post-panel',
+			'index.js'
+		),
 	},
 };

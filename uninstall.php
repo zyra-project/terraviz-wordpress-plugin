@@ -49,6 +49,11 @@ function terraviz_uninstall_current_site(): void {
 	$wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", $terraviz_like ) );
 	// phpcs:ignore WordPress.DB.DirectDatabaseQuery
 	$wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", $terraviz_timeout_like ) );
+
+	// Drop the blog-sync post meta the plugin wrote.
+	foreach ( array( '_terraviz_blog_optin', '_terraviz_blog_id', '_terraviz_blog_slug', '_terraviz_blog_state' ) as $terraviz_meta_key ) {
+		delete_post_meta_by_key( $terraviz_meta_key );
+	}
 }
 
 if ( is_multisite() ) {
