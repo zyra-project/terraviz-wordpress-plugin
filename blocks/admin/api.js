@@ -137,6 +137,61 @@ export function reviewEvent( id, data ) {
 	return apiFetch( { url: eventUrl( id ), method: 'POST', data } );
 }
 
+const feedsUrl = () => `${ root }/feeds`;
+const feedUrl = ( id ) => `${ feedsUrl() }/${ encodeURIComponent( id ) }`;
+
+/**
+ * List every feed connector (the node returns them all in one shot).
+ *
+ * @return {Promise<{feeds: Array}>} The connectors.
+ */
+export function listFeeds() {
+	return apiFetch( { url: feedsUrl() } );
+}
+
+/**
+ * Create a feed connector.
+ *
+ * @param {Object} data `{ kind, label, url, category?, enabled? }`.
+ * @return {Promise<{feed: Object}>} The created connector.
+ */
+export function createFeed( data ) {
+	return apiFetch( { url: feedsUrl(), method: 'POST', data } );
+}
+
+/**
+ * Partially update a feed connector (`kind` is immutable). The node applies
+ * this as a patch over POST — there is no PUT.
+ *
+ * @param {string} id   Feed connector id.
+ * @param {Object} data `{ label?, url?, category?, enabled? }`.
+ * @return {Promise<{feed: Object}>} The updated connector.
+ */
+export function updateFeed( id, data ) {
+	return apiFetch( { url: feedUrl( id ), method: 'POST', data } );
+}
+
+/**
+ * Delete a feed connector. Events it already ingested remain.
+ *
+ * @param {string} id Feed connector id.
+ * @return {Promise<Object>} `{ deleted: true }`.
+ */
+export function deleteFeed( id ) {
+	return apiFetch( { url: feedUrl( id ), method: 'DELETE' } );
+}
+
+/**
+ * Dry-run a feed source without saving it.
+ *
+ * @param {{kind: string, url: string}} params Source to preview.
+ * @return {Promise<{fetched: number, mappable: number, items: Array}>} Preview.
+ */
+export function previewFeed( { kind, url } ) {
+	const qs = new URLSearchParams( { kind, url } ).toString();
+	return apiFetch( { url: `${ feedsUrl() }/preview?${ qs }` } );
+}
+
 /**
  * Normalise an apiFetch rejection into `{ message, errors }`. apiFetch rejects
  * with the parsed JSON error body, so field-validation errors from the node

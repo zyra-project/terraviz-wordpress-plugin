@@ -119,6 +119,7 @@ final class Dashboard {
 			'nonce'                => wp_create_nonce( 'wp_rest' ),
 			'origin'               => Options::origin(),
 			'canPublish'           => Capabilities::can_publish(),
+			'canConfigure'         => Capabilities::can_configure(),
 			'credentialConfigured' => Credential::configured(),
 			'settingsUrl'          => admin_url( 'options-general.php?page=terraviz-settings' ),
 		);

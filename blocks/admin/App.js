@@ -1,8 +1,9 @@
 /**
- * The publisher dashboard root: a top-level section nav (Datasets | Events)
- * over two workflows. Datasets switches between the list and the create/edit
- * form; Events (publish-tier only) switches between the review queue and the
- * per-event review screen.
+ * The publisher dashboard root: a top-level section nav (Datasets | Events |
+ * Feeds) over three workflows. Datasets switches between the list and the
+ * create/edit form; Events (publish-tier only) switches between the review
+ * queue and the per-event review screen; Feeds (configure-tier only) manages
+ * the RSS/EONET source connectors that generate proposed events.
  */
 import { __ } from '@wordpress/i18n';
 import { useState, useEffect, useCallback } from '@wordpress/element';
@@ -11,12 +12,17 @@ import DatasetList from './DatasetList';
 import DatasetForm from './DatasetForm';
 import EventList from './EventList';
 import EventReview from './EventReview';
+import FeedList from './FeedList';
+import FeedForm from './FeedForm';
 import {
 	listDatasets,
 	publishDataset,
 	retractDataset,
 	deleteDataset,
 	listEvents,
+	listFeeds,
+	updateFeed,
+	deleteFeed,
 	normalizeError,
 } from './api';
 
@@ -179,6 +185,93 @@ function EventsSection() {
 	);
 }
 
+function FeedsSection() {
+	const [ editing, setEditing ] = useState( null );
+	const [ feeds, setFeeds ] = useState( [] );
+	const [ loading, setLoading ] = useState( false );
+	const [ busyId, setBusyId ] = useState( null );
+	const [ notice, setNotice ] = useState( null );
+
+	const refresh = useCallback( () => {
+		setLoading( true );
+		listFeeds()
+			.then( ( res ) =>
+				setFeeds( Array.isArray( res.feeds ) ? res.feeds : [] )
+			)
+			.catch( ( e ) =>
+				setNotice( {
+					type: 'error',
+					text: normalizeError( e ).message,
+				} )
+			)
+			.finally( () => setLoading( false ) );
+	}, [] );
+
+	useEffect( () => {
+		if ( ! editing ) {
+			refresh();
+		}
+	}, [ editing, refresh ] );
+
+	const runAction = ( promise, id ) => {
+		setBusyId( id );
+		setNotice( null );
+		promise
+			.then( () => refresh() )
+			.catch( ( e ) =>
+				setNotice( {
+					type: 'error',
+					text: normalizeError( e ).message,
+				} )
+			)
+			.finally( () => setBusyId( null ) );
+	};
+
+	if ( editing ) {
+		return (
+			<FeedForm
+				feed={ editing === 'new' ? {} : editing }
+				onSaved={ () => setEditing( null ) }
+				onCancel={ () => setEditing( null ) }
+			/>
+		);
+	}
+
+	return (
+		<div>
+			{ notice && (
+				<Notice
+					status={ notice.type }
+					onRemove={ () => setNotice( null ) }
+				>
+					{ notice.text }
+				</Notice>
+			) }
+			<FeedList
+				feeds={ feeds }
+				loading={ loading }
+				busyId={ busyId }
+				onNew={ () => setEditing( 'new' ) }
+				onEdit={ ( feed ) => setEditing( feed ) }
+				onToggle={ ( feed, enabled ) =>
+					runAction( updateFeed( feed.id, { enabled } ), feed.id )
+				}
+				onDelete={ ( feed ) => {
+					const msg = __(
+						'Delete this feed connector? Events it already ingested are kept.',
+						'terraviz'
+					);
+					// eslint-disable-next-line no-alert -- a native confirm is acceptable for a destructive wp-admin action.
+					if ( ! window.confirm( msg ) ) {
+						return;
+					}
+					runAction( deleteFeed( feed.id ), feed.id );
+				} }
+			/>
+		</div>
+	);
+}
+
 export default function App( { boot } ) {
 	const [ section, setSection ] = useState( 'datasets' );
 
@@ -200,10 +293,16 @@ export default function App( { boot } ) {
 	}
 
 	const showEvents = !! boot.canPublish;
+	const showFeeds = !! boot.canConfigure;
+	const activeSection =
+		( section === 'events' && showEvents ) ||
+		( section === 'feeds' && showFeeds )
+			? section
+			: 'datasets';
 
 	return (
 		<div>
-			{ showEvents && (
+			{ ( showEvents || showFeeds ) && (
 				<h2
 					className="nav-tab-wrapper"
 					style={ { marginBottom: '16px' } }
@@ -211,27 +310,46 @@ export default function App( { boot } ) {
 					<button
 						type="button"
 						className={ `nav-tab${
-							section === 'datasets' ? ' nav-tab-active' : ''
+							activeSection === 'datasets'
+								? ' nav-tab-active'
+								: ''
 						}` }
 						onClick={ () => setSection( 'datasets' ) }
 					>
 						{ __( 'Datasets', 'terraviz' ) }
 					</button>
-					<button
-						type="button"
-						className={ `nav-tab${
-							section === 'events' ? ' nav-tab-active' : ''
-						}` }
-						onClick={ () => setSection( 'events' ) }
-					>
-						{ __( 'Events', 'terraviz' ) }
-					</button>
+					{ showEvents && (
+						<button
+							type="button"
+							className={ `nav-tab${
+								activeSection === 'events'
+									? ' nav-tab-active'
+									: ''
+							}` }
+							onClick={ () => setSection( 'events' ) }
+						>
+							{ __( 'Events', 'terraviz' ) }
+						</button>
+					) }
+					{ showFeeds && (
+						<button
+							type="button"
+							className={ `nav-tab${
+								activeSection === 'feeds'
+									? ' nav-tab-active'
+									: ''
+							}` }
+							onClick={ () => setSection( 'feeds' ) }
+						>
+							{ __( 'Feeds', 'terraviz' ) }
+						</button>
+					) }
 				</h2>
 			) }
 
-			{ showEvents && section === 'events' ? (
-				<EventsSection />
-			) : (
+			{ activeSection === 'events' && <EventsSection /> }
+			{ activeSection === 'feeds' && <FeedsSection /> }
+			{ activeSection === 'datasets' && (
 				<DatasetsSection boot={ boot } />
 			) }
 		</div>
