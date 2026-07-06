@@ -191,7 +191,10 @@ class PublishClientTest extends WP_UnitTestCase {
 		$this->assertSame( 'GET', $this->captured_args['method'] );
 		$this->assertStringContainsString( 'status=draft', $this->captured_url );
 		$this->assertStringContainsString( 'limit=25', $this->captured_url );
-		$this->assertArrayNotHasKey( 'body', $this->captured_args );
+		// A bodyless GET must not declare a JSON content type (WordPress itself
+		// injects a default empty `body` arg downstream, so assert on the header
+		// this class actually controls rather than the presence of `body`).
+		$this->assertArrayNotHasKey( 'Content-Type', $this->captured_args['headers'] );
 	}
 
 	public function test_create_dataset_posts_json_body(): void {
