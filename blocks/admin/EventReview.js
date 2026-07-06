@@ -70,6 +70,8 @@ export default function EventReview( { event, onReviewed, onCancel } ) {
 	const [ notice, setNotice ] = useState( null );
 
 	const suggested = Array.isArray( event.links ) ? event.links : [];
+	const source = event.source || {};
+	const sourceHref = safeHttpUrl( source.url );
 	const set = ( key ) => ( value ) =>
 		setEdits( { ...edits, [ key ]: value } );
 	const fieldError = ( name ) => {
@@ -139,14 +141,14 @@ export default function EventReview( { event, onReviewed, onCancel } ) {
 				<strong>{ event.title || event.id }</strong>
 				{ event.status ? ` — ${ event.status }` : '' }
 			</p>
-			{ event.source && event.source.url && (
+			{ source.url && (
 				<p>
-					{ safeHttpUrl( event.source.url ) ? (
-						<ExternalLink href={ safeHttpUrl( event.source.url ) }>
-							{ event.source.name || event.source.url }
+					{ sourceHref ? (
+						<ExternalLink href={ sourceHref }>
+							{ source.name || source.url }
 						</ExternalLink>
 					) : (
-						event.source.name || event.source.url
+						source.name || source.url
 					) }
 				</p>
 			) }

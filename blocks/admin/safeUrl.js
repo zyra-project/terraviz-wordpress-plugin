@@ -6,11 +6,16 @@
  * `ExternalLink` does not restrict the URL scheme, so callers pass a URL
  * through here first and fall back to plain text when it is not http(s).
  *
+ * Returns the trimmed URL (so the rendered href carries no stray whitespace),
+ * or null when it is not an http(s) string.
+ *
  * @param {*} url Candidate URL (any type; only strings can pass).
- * @return {?string} The URL if it is an http(s) URL, otherwise null.
+ * @return {?string} The trimmed URL if it is http(s), otherwise null.
  */
 export function safeHttpUrl( url ) {
-	return typeof url === 'string' && /^https?:\/\//i.test( url.trim() )
-		? url
-		: null;
+	if ( typeof url !== 'string' ) {
+		return null;
+	}
+	const trimmed = url.trim();
+	return /^https?:\/\//i.test( trimmed ) ? trimmed : null;
 }
