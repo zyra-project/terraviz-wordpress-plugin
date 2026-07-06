@@ -54,11 +54,16 @@ final class Plugin {
 		add_action( 'init', array( new Shortcode(), 'register' ) );
 		add_action( 'init', array( new Oembed(), 'register' ) );
 		add_action( 'rest_api_init', array( new Rest\SearchController(), 'register' ) );
+		add_action( 'rest_api_init', array( new Rest\PublisherController(), 'register' ) );
 
 		if ( is_admin() ) {
 			$settings = new Settings();
 			add_action( 'admin_menu', array( $settings, 'add_page' ) );
 			add_action( 'admin_init', array( $settings, 'register' ) );
+
+			$dashboard = new Admin\Dashboard();
+			add_action( 'admin_menu', array( $dashboard, 'add_page' ) );
+			add_action( 'admin_enqueue_scripts', array( $dashboard, 'enqueue' ) );
 		}
 	}
 

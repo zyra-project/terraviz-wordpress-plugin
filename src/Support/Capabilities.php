@@ -118,6 +118,34 @@ final class Capabilities {
 	}
 
 	/**
+	 * Whether a user may create/edit drafts through the plugin (draft tier and
+	 * above). This is the minimum bar to reach the publisher dashboard.
+	 *
+	 * @param \WP_User|int|null $user User or id; null = current user.
+	 */
+	public static function can_draft( $user = null ): bool {
+		return in_array(
+			self::intent_for( $user ),
+			array( self::INTENT_DRAFT, self::INTENT_PUBLISH, self::INTENT_CONFIGURE ),
+			true
+		);
+	}
+
+	/**
+	 * Whether a user may publish/retract/delete through the plugin (publish
+	 * tier and above).
+	 *
+	 * @param \WP_User|int|null $user User or id; null = current user.
+	 */
+	public static function can_publish( $user = null ): bool {
+		return in_array(
+			self::intent_for( $user ),
+			array( self::INTENT_PUBLISH, self::INTENT_CONFIGURE ),
+			true
+		);
+	}
+
+	/**
 	 * A short, translatable label for an intent tier (for the settings UI).
 	 *
 	 * @param string $intent One of the INTENT_* constants.

@@ -28,6 +28,13 @@ class PublishClientTest extends WP_UnitTestCase {
 	 */
 	private $captured_args = array();
 
+	/**
+	 * The request URL captured by the filter, for assertions.
+	 *
+	 * @var string
+	 */
+	private $captured_url = '';
+
 	public function set_up(): void {
 		parent::set_up();
 		add_filter( 'pre_http_request', array( $this, 'short_circuit' ), 10, 3 );
@@ -48,6 +55,7 @@ class PublishClientTest extends WP_UnitTestCase {
 	 */
 	public function short_circuit( $pre, $args, $url ) {
 		$this->captured_args = $args;
+		$this->captured_url  = $url;
 		return $this->canned;
 	}
 
@@ -159,5 +167,115 @@ class PublishClientTest extends WP_UnitTestCase {
 
 		$this->assertFalse( $result['ok'] );
 		$this->assertSame( 'invalid_response', $result['error'] );
+	}
+
+	public function test_list_datasets_builds_query_and_uses_get(): void {
+		$this->canned = $this->respond(
+			200,
+			(string) wp_json_encode(
+				array(
+					'datasets'    => array(),
+					'next_cursor' => null,
+				)
+			)
+		);
+
+		$result = $this->client()->list_datasets(
+			array(
+				'status' => 'draft',
+				'limit'  => '25',
+			)
+		);
+
+		$this->assertTrue( $result['ok'] );
+		$this->assertSame( 'GET', $this->captured_args['method'] );
+		$this->assertStringContainsString( 'status=draft', $this->captured_url );
+		$this->assertStringContainsString( 'limit=25', $this->captured_url );
+		// A bodyless GET must not declare a JSON content type (WordPress itself
+		// injects a default empty `body` arg downstream, so assert on the header
+		// this class actually controls rather than the presence of `body`).
+		$this->assertArrayNotHasKey( 'Content-Type', $this->captured_args['headers'] );
+	}
+
+	public function test_create_dataset_posts_json_body(): void {
+		$this->canned = $this->respond( 201, (string) wp_json_encode( array( 'dataset' => array( 'id' => 'NEW' ) ) ) );
+
+		$result = $this->client()->create_dataset(
+			array(
+				'title'  => 'Hi',
+				'format' => 'image/png',
+			)
+		);
+
+		$this->assertTrue( $result['ok'] );
+		$this->assertSame( 201, $result['status'] );
+		$this->assertSame( 'NEW', $result['data']['dataset']['id'] );
+		$this->assertSame( 'POST', $this->captured_args['method'] );
+		$this->assertSame( 'application/json', $this->captured_args['headers']['Content-Type'] );
+		$this->assertSame( 'Hi', json_decode( $this->captured_args['body'], true )['title'] );
+		$this->assertSame( 'cid.access', $this->captured_args['headers']['Cf-Access-Client-Id'] );
+	}
+
+	public function test_validation_errors_pass_through(): void {
+		$this->canned = $this->respond(
+			400,
+			(string) wp_json_encode(
+				array(
+					'errors' => array(
+						array(
+							'field'   => 'title',
+							'code'    => 'too_short',
+							'message' => 'min 3',
+						),
+					),
+				)
+			)
+		);
+
+		$result = $this->client()->create_dataset( array( 'title' => 'x' ) );
+
+		$this->assertFalse( $result['ok'] );
+		$this->assertSame( 'validation', $result['error'] );
+		$this->assertSame( 'title', $result['errors'][0]['field'] );
+	}
+
+	public function test_update_uses_put_with_encoded_id(): void {
+		$this->canned = $this->respond( 200, (string) wp_json_encode( array( 'dataset' => array( 'id' => 'D1' ) ) ) );
+
+		$this->client()->update_dataset( 'D1', array( 'abstract' => 'text' ) );
+
+		$this->assertSame( 'PUT', $this->captured_args['method'] );
+		$this->assertStringContainsString( '/datasets/D1', $this->captured_url );
+	}
+
+	public function test_publish_and_retract_target_lifecycle_paths(): void {
+		$this->canned = $this->respond( 200, (string) wp_json_encode( array( 'dataset' => array( 'id' => 'D1' ) ) ) );
+
+		$this->client()->publish_dataset( 'D1' );
+		$this->assertSame( 'POST', $this->captured_args['method'] );
+		$this->assertStringEndsWith( '/datasets/D1/publish', $this->captured_url );
+		// An empty lifecycle body must serialise to a JSON object, not `[]`.
+		$this->assertSame( '{}', $this->captured_args['body'] );
+
+		$this->client()->retract_dataset( 'D1' );
+		$this->assertStringEndsWith( '/datasets/D1/retract', $this->captured_url );
+	}
+
+	public function test_delete_uses_delete_method(): void {
+		$this->canned = $this->respond( 200, (string) wp_json_encode( array( 'deleted_id' => 'D1' ) ) );
+
+		$result = $this->client()->delete_dataset( 'D1' );
+
+		$this->assertSame( 'DELETE', $this->captured_args['method'] );
+		$this->assertSame( 'D1', $result['data']['deleted_id'] );
+	}
+
+	public function test_id_segment_is_url_encoded(): void {
+		$this->canned = $this->respond( 200, '{}' );
+
+		$this->client()->get_dataset( 'has space/../x' );
+
+		$this->assertStringContainsString( 'has%20space', $this->captured_url );
+		$this->assertStringNotContainsString( '/../', $this->captured_url );
 	}
 }

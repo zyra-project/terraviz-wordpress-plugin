@@ -6,6 +6,27 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Phase 3a — the authenticated publisher dashboard (dataset CRUD/lifecycle).
+
+### Added
+- Server-side **publish proxy**: `PublishClient` now performs the full dataset
+  write set (list/create/update/publish/retract/delete) against the Terraviz
+  publish API, attaching the stored Cloudflare Access service token in PHP so
+  it never reaches the browser.
+- Same-origin REST proxy `terraviz/v1/publisher/datasets*`, gated by the
+  Phase-2 capability tiers (draft tier for create/edit drafts, publish tier for
+  publish/retract/delete — and for editing an already-published dataset, since
+  that changes live content) plus a credential-configured check. The dataset body
+  is reduced to an allowlist of known fields before it is forwarded; the node
+  remains the authoritative validator.
+- A **wp-admin publisher dashboard** (a React `@wordpress/element` app): list
+  datasets by lifecycle state, create/edit drafts with inline field-validation
+  errors, and publish/retract/delete — all proxied server-side. Actions are
+  attributed to the shared `service` identity (upstream limitation), surfaced
+  in the UI.
+
+## [Unreleased — Phase 2]
+
 Phase 2 — WordPress account mapping (still no catalog writes).
 
 ### Added
