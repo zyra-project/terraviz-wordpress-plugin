@@ -9,6 +9,8 @@ declare( strict_types = 1 );
 
 use Terraviz\Rest\PublisherController;
 use Terraviz\Support\Capabilities;
+use Terraviz\Support\Credential;
+use Terraviz\Support\Crypto;
 
 /**
  * @covers \Terraviz\Rest\PublisherController
@@ -22,10 +24,65 @@ class PublisherControllerTest extends WP_UnitTestCase {
 	 */
 	private $controller;
 
+	/**
+	 * Canned HTTP responses keyed by method, for the proxy-gate tests.
+	 *
+	 * @var array<string,mixed>
+	 */
+	private $http_by_method = array();
+
+	/**
+	 * HTTP methods the proxy actually sent, in order.
+	 *
+	 * @var array<int,string>
+	 */
+	private $sent_methods = array();
+
 	public function set_up(): void {
 		parent::set_up();
 		Capabilities::grant();
 		$this->controller = new PublisherController();
+	}
+
+	/**
+	 * Short-circuit the proxy's outbound HTTP, recording the method and
+	 * returning a canned per-method response.
+	 *
+	 * @param mixed  $pre  Short-circuit value.
+	 * @param array  $args Request args.
+	 * @param string $url  Request URL.
+	 * @return mixed
+	 */
+	public function intercept_http( $pre, $args, $url ) {
+		$method               = isset( $args['method'] ) ? (string) $args['method'] : 'GET';
+		$this->sent_methods[] = $method;
+
+		return $this->http_by_method[ $method ] ?? array(
+			'response' => array( 'code' => 200 ),
+			'body'     => '{}',
+		);
+	}
+
+	private function configure_credential(): void {
+		if ( ! Crypto::available() ) {
+			$this->markTestSkipped( 'No crypto backend to store a service token.' );
+		}
+		Credential::save( 'cid.access', 'sekret' );
+	}
+
+	private function dataset_response( array $dataset ): array {
+		return array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode( array( 'dataset' => $dataset ) ),
+		);
+	}
+
+	private function put_request( string $id, array $body ): WP_REST_Request {
+		$request = new WP_REST_Request( 'PUT' );
+		$request->set_param( 'id', $id );
+		$request->set_header( 'Content-Type', 'application/json' );
+		$request->set_body( (string) wp_json_encode( $body ) );
+		return $request;
 	}
 
 	public function test_normalize_keeps_allowlisted_fields_and_coerces_types(): void {
@@ -125,5 +182,78 @@ class PublisherControllerTest extends WP_UnitTestCase {
 		wp_set_current_user( $contributor );
 		$this->assertFalse( $this->controller->require_draft() );
 		$this->assertFalse( $this->controller->require_publish() );
+	}
+
+	public function test_draft_tier_cannot_edit_published_dataset(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'author' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		// The state fetch reports a published (non-retracted) dataset.
+		$this->http_by_method['GET'] = $this->dataset_response(
+			array(
+				'id'           => 'D1',
+				'published_at' => '2026-01-01T00:00:00Z',
+				'retracted_at' => null,
+			)
+		);
+
+		$response = $this->controller->update_dataset( $this->put_request( 'D1', array( 'title' => 'Hijacked' ) ) );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 403, $response->get_status() );
+		$this->assertSame( 'forbidden_published', $response->get_data()['error'] );
+		// The write must never be forwarded.
+		$this->assertNotContains( 'PUT', $this->sent_methods );
+	}
+
+	public function test_draft_tier_can_edit_a_draft(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'author' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['GET'] = $this->dataset_response(
+			array(
+				'id'           => 'D1',
+				'published_at' => null,
+				'retracted_at' => null,
+			)
+		);
+		$this->http_by_method['PUT'] = $this->dataset_response(
+			array(
+				'id'    => 'D1',
+				'title' => 'New',
+			)
+		);
+
+		$response = $this->controller->update_dataset( $this->put_request( 'D1', array( 'title' => 'New' ) ) );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertContains( 'PUT', $this->sent_methods );
+	}
+
+	public function test_publish_tier_edits_published_without_precheck(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['PUT'] = $this->dataset_response(
+			array(
+				'id'    => 'D1',
+				'title' => 'Edited',
+			)
+		);
+
+		$response = $this->controller->update_dataset( $this->put_request( 'D1', array( 'title' => 'Edited' ) ) );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		// A publish-tier user skips the state fetch entirely.
+		$this->assertNotContains( 'GET', $this->sent_methods );
+		$this->assertContains( 'PUT', $this->sent_methods );
 	}
 }

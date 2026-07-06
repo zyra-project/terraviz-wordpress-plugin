@@ -82,27 +82,36 @@ export default function DatasetList( {
 					{ datasets.map( ( ds ) => {
 						const status = deriveStatus( ds );
 						const busy = busyId === ds.id;
+						// Editing a published row is a publish-tier action; the
+						// server enforces this too.
+						const canEditRow = canPublish || status !== 'published';
 						return (
 							<tr key={ ds.id }>
 								<td>
-									<Button
-										variant="link"
-										onClick={ () => onEdit( ds.id ) }
-									>
-										{ ds.title || ds.slug || ds.id }
-									</Button>
+									{ canEditRow ? (
+										<Button
+											variant="link"
+											onClick={ () => onEdit( ds.id ) }
+										>
+											{ ds.title || ds.slug || ds.id }
+										</Button>
+									) : (
+										ds.title || ds.slug || ds.id
+									) }
 								</td>
 								<td>{ ds.slug || '—' }</td>
 								<td>{ statusLabel( status ) }</td>
 								<td>
-									<Button
-										variant="secondary"
-										size="small"
-										onClick={ () => onEdit( ds.id ) }
-										disabled={ busy }
-									>
-										{ __( 'Edit', 'terraviz' ) }
-									</Button>{ ' ' }
+									{ canEditRow && (
+										<Button
+											variant="secondary"
+											size="small"
+											onClick={ () => onEdit( ds.id ) }
+											disabled={ busy }
+										>
+											{ __( 'Edit', 'terraviz' ) }
+										</Button>
+									) }{ ' ' }
 									{ canPublish && status === 'draft' && (
 										<Button
 											variant="secondary"

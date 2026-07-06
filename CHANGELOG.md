@@ -14,8 +14,9 @@ Phase 3a — the authenticated publisher dashboard (dataset CRUD/lifecycle).
   publish API, attaching the stored Cloudflare Access service token in PHP so
   it never reaches the browser.
 - Same-origin REST proxy `terraviz/v1/publisher/datasets*`, gated by the
-  Phase-2 capability tiers (draft tier for create/edit, publish tier for
-  publish/retract/delete) plus a credential-configured check. The dataset body
+  Phase-2 capability tiers (draft tier for create/edit drafts, publish tier for
+  publish/retract/delete — and for editing an already-published dataset, since
+  that changes live content) plus a credential-configured check. The dataset body
   is reduced to an allowlist of known fields before it is forwarded; the node
   remains the authoritative validator.
 - A **wp-admin publisher dashboard** (a React `@wordpress/element` app): list

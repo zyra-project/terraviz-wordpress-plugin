@@ -266,9 +266,44 @@ final class PublisherController {
 			return $this->credential_missing();
 		}
 
+		$id = (string) $request->get_param( 'id' );
+
+		// Editing a *published* dataset changes live catalog content — a
+		// publish-tier action. A draft-tier user may only edit drafts and
+		// retracted rows. Because every WP user acts under one shared Terraviz
+		// `service` identity, this boundary can only be enforced here: check the
+		// target's current state before forwarding the write. Publish-tier users
+		// skip the extra fetch.
+		if ( ! Capabilities::can_publish() ) {
+			$current = $client->get_dataset( $id );
+			if ( $current['ok'] && $this->is_published( $current['data'] ) ) {
+				return new WP_REST_Response(
+					array(
+						'error'   => 'forbidden_published',
+						'message' => __( 'Editing a published dataset requires publish permissions. Ask an editor, or retract it first.', 'terraviz' ),
+						'errors'  => array(),
+					),
+					403
+				);
+			}
+		}
+
 		$body = $this->normalize_dataset_body( (array) $request->get_json_params() );
 
-		return $this->respond( $client->update_dataset( (string) $request->get_param( 'id' ), $body ) );
+		return $this->respond( $client->update_dataset( $id, $body ) );
+	}
+
+	/**
+	 * Whether a dataset payload represents a currently-published row (published
+	 * and not retracted). Accepts either the `{ dataset: {...} }` envelope or a
+	 * bare dataset array.
+	 *
+	 * @param array<string,mixed> $data Decoded dataset response body.
+	 */
+	private function is_published( array $data ): bool {
+		$dataset = ( isset( $data['dataset'] ) && is_array( $data['dataset'] ) ) ? $data['dataset'] : $data;
+
+		return ! empty( $dataset['published_at'] ) && empty( $dataset['retracted_at'] );
 	}
 
 	/**
