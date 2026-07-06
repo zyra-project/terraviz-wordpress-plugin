@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Fullscreen toggle on the interactive globe embeds. Once a globe loads, a
+  button overlaid in its corner expands the embed to fullscreen (and back),
+  wired for keyboard use and screen readers. Progressive enhancement only —
+  the button is added client-side and hidden where the browser doesn't allow
+  element fullscreen (e.g. iOS Safari), so the SSR fallback is unchanged.
+
 ## [0.4.0] - 2026-07-06
 
 Phase 4 — post/blog bridge (one-way WP → Terraviz discovery).
