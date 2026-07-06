@@ -36,9 +36,14 @@ final class SearchController {
 	private const ROUTE     = '/search';
 
 	/**
-	 * Max rows returned.
+	 * Default max rows returned by the picker.
+	 *
+	 * Raised from the original 20 so a large catalog (the canonical node carries
+	 * 150+ datasets) is reachable through the typeahead rather than being clipped
+	 * after the first handful of catalog-order rows. Filterable via
+	 * `terraviz_search_limit` for sites that want a different cap.
 	 */
-	private const LIMIT = 20;
+	private const DEFAULT_LIMIT = 50;
 
 	/**
 	 * The catalog data source.
@@ -102,7 +107,19 @@ final class SearchController {
 		$q    = (string) $request->get_param( 'q' );
 		$type = (string) $request->get_param( 'type' );
 
-		return rest_ensure_response( $this->query( $q, $type, self::LIMIT ) );
+		/**
+		 * Filter the maximum number of rows the editor picker returns.
+		 *
+		 * @param int    $limit Default row cap.
+		 * @param string $q     The search query.
+		 * @param string $type  Search scope: 'dataset' | 'tour' | 'all'.
+		 */
+		$limit = (int) apply_filters( 'terraviz_search_limit', self::DEFAULT_LIMIT, $q, $type );
+		if ( $limit < 1 ) {
+			$limit = self::DEFAULT_LIMIT;
+		}
+
+		return rest_ensure_response( $this->query( $q, $type, $limit ) );
 	}
 
 	/**
