@@ -299,12 +299,17 @@ final class PublisherController {
 	}
 
 	/**
-	 * Guard changes to *published* catalog content. Editing or re-asseting a
-	 * published dataset changes live content — a publish-tier action. A
-	 * draft-tier user may only touch drafts and retracted rows. Because every WP
-	 * user acts under one shared Terraviz `service` identity, this boundary can
-	 * only be enforced here: check the target's current state before forwarding
-	 * the write. Publish-tier users skip the extra fetch.
+	 * Guard changes to *published* catalog content. Editing a published dataset,
+	 * or uploading a new asset to one, changes live content — a publish-tier
+	 * action. A draft-tier user may only touch drafts and retracted rows. Because
+	 * every WP user acts under one shared Terraviz `service` identity, this
+	 * boundary can only be enforced here: check the target's current state before
+	 * forwarding the write. Publish-tier users skip the extra fetch.
+	 *
+	 * The plugin is the *only* tier gate (the node authorises the shared
+	 * identity for everything), so when the state fetch fails for a reason other
+	 * than a plain 404 we fail **closed** rather than risk forwarding a
+	 * draft-tier write to a published dataset.
 	 *
 	 * @param PublishClient $client Proxy client.
 	 * @param string        $id     Dataset id.
@@ -316,7 +321,25 @@ final class PublisherController {
 		}
 
 		$current = $client->get_dataset( $id );
-		if ( $current['ok'] && $this->is_published( $current['data'] ) ) {
+
+		if ( ! $current['ok'] ) {
+			// A plain 404 is harmless to forward — the write returns the node's
+			// own 404 and nothing changes. Any other failure means we could not
+			// confirm the state, so fail closed.
+			if ( 404 === $current['status'] ) {
+				return null;
+			}
+			return new WP_REST_Response(
+				array(
+					'error'   => 'state_unverified',
+					'message' => __( 'Could not verify the dataset’s state; please try again.', 'terraviz' ),
+					'errors'  => array(),
+				),
+				502
+			);
+		}
+
+		if ( $this->is_published( $current['data'] ) ) {
 			return new WP_REST_Response(
 				array(
 					'error'   => 'forbidden_published',
@@ -452,8 +475,13 @@ final class PublisherController {
 		if ( isset( $raw['mime'] ) && is_string( $raw['mime'] ) ) {
 			$out['mime'] = sanitize_text_field( $raw['mime'] );
 		}
-		if ( isset( $raw['size'] ) && is_numeric( $raw['size'] ) ) {
-			$out['size'] = (int) $raw['size'];
+		if ( isset( $raw['size'] ) ) {
+			// A byte count: accept only a non-negative integer (reject floats
+			// like "1.5" and negatives). The node enforces the per-kind caps.
+			$size = filter_var( $raw['size'], FILTER_VALIDATE_INT, array( 'options' => array( 'min_range' => 0 ) ) );
+			if ( false !== $size ) {
+				$out['size'] = $size;
+			}
 		}
 		if ( isset( $raw['content_digest'] ) && is_string( $raw['content_digest'] ) ) {
 			$out['content_digest'] = sanitize_text_field( $raw['content_digest'] );

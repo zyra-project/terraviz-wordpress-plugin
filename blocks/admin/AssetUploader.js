@@ -95,15 +95,23 @@ export default function AssetUploader( { id, onUploaded } ) {
 			<p>
 				<input
 					type="file"
+					aria-label={ __( 'Choose a file to upload', 'terraviz' ) }
 					disabled={ busy }
-					onChange={ ( e ) =>
-						setFile(
+					onChange={ ( e ) => {
+						const picked =
 							e.target.files && e.target.files[ 0 ]
 								? e.target.files[ 0 ]
-								: null
-						)
-					}
+								: null;
+						setFile( picked );
+						// Clear the native input so the same file can be picked
+						// again (some browsers skip onChange for an identical
+						// selection); the File object is already captured in state.
+						e.target.value = '';
+					} }
 				/>
+				{ file && (
+					<span style={ { marginLeft: '8px' } }>{ file.name }</span>
+				) }
 			</p>
 			<Button
 				variant="secondary"

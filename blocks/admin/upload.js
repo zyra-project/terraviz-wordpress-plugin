@@ -22,6 +22,15 @@ import { initAsset, completeAsset } from './api';
  * @return {Promise<string>} Hex digest.
  */
 export async function sha256Hex( file ) {
+	if ( ! window.crypto || ! window.crypto.subtle ) {
+		// WebCrypto is only exposed in secure contexts (HTTPS or localhost).
+		throw new Error(
+			__(
+				'Secure hashing is unavailable. Uploads require the admin area to be served over HTTPS.',
+				'terraviz'
+			)
+		);
+	}
 	const buffer = await file.arrayBuffer();
 	const digest = await window.crypto.subtle.digest( 'SHA-256', buffer );
 	return Array.from( new Uint8Array( digest ) )

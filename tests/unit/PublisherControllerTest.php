@@ -258,6 +258,66 @@ class PublisherControllerTest extends WP_UnitTestCase {
 		);
 	}
 
+	public function test_normalize_asset_init_rejects_bad_size(): void {
+		$this->assertArrayNotHasKey( 'size', $this->controller->normalize_asset_init( array( 'size' => '1.5' ) ) );
+		$this->assertArrayNotHasKey( 'size', $this->controller->normalize_asset_init( array( 'size' => -5 ) ) );
+		$this->assertSame( 123, $this->controller->normalize_asset_init( array( 'size' => '123' ) )['size'] );
+		$this->assertSame( 0, $this->controller->normalize_asset_init( array( 'size' => 0 ) )['size'] );
+	}
+
+	public function test_guard_fails_closed_when_state_fetch_errors(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'author' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		// The state fetch fails with a node error (not a 404).
+		$this->http_by_method['GET'] = array(
+			'response' => array( 'code' => 500 ),
+			'body'     => '{}',
+		);
+
+		$response = $this->controller->update_dataset( $this->put_request( 'D1', array( 'title' => 'x' ) ) );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 502, $response->get_status() );
+		$this->assertSame( 'state_unverified', $response->get_data()['error'] );
+		$this->assertNotContains( 'PUT', $this->sent_methods );
+	}
+
+	public function test_guard_forwards_when_state_fetch_is_404(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'author' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		// A plain 404 is harmless to forward; the write returns the node's 404.
+		$this->http_by_method['GET'] = array(
+			'response' => array( 'code' => 404 ),
+			'body'     => (string) wp_json_encode(
+				array(
+					'error'   => 'not_found',
+					'message' => 'nope',
+				)
+			),
+		);
+		$this->http_by_method['PUT'] = array(
+			'response' => array( 'code' => 404 ),
+			'body'     => (string) wp_json_encode(
+				array(
+					'error'   => 'not_found',
+					'message' => 'nope',
+				)
+			),
+		);
+
+		$response = $this->controller->update_dataset( $this->put_request( 'D1', array( 'title' => 'x' ) ) );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertContains( 'PUT', $this->sent_methods );
+		$this->assertSame( 404, $response->get_status() );
+	}
+
 	public function test_draft_tier_cannot_upload_to_published_dataset(): void {
 		$this->configure_credential();
 		wp_set_current_user( self::factory()->user->create( array( 'role' => 'author' ) ) );
