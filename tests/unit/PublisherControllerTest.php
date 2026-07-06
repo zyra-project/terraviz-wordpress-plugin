@@ -529,6 +529,24 @@ class PublisherControllerTest extends WP_UnitTestCase {
 		);
 	}
 
+	public function test_normalize_event_edits_handles_nullable_fields(): void {
+		// null clears; a scalar sets; a non-scalar is dropped (never "Array").
+		$out = $this->controller->normalize_event_review_body(
+			array(
+				'edits' => array(
+					'imageAlt'      => null,
+					'videoEmbedUrl' => array( 'not', 'a', 'string' ),
+					'imageUrl'      => 'https://x/y.png',
+				),
+			)
+		);
+
+		$this->assertArrayHasKey( 'imageAlt', $out['edits'] );
+		$this->assertNull( $out['edits']['imageAlt'] );
+		$this->assertArrayNotHasKey( 'videoEmbedUrl', $out['edits'] );
+		$this->assertSame( 'https://x/y.png', $out['edits']['imageUrl'] );
+	}
+
 	public function test_events_routes_require_publish_tier(): void {
 		$editor = self::factory()->user->create( array( 'role' => 'editor' ) );
 		$author = self::factory()->user->create( array( 'role' => 'author' ) );

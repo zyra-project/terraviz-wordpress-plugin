@@ -31,17 +31,22 @@ function initialEdits( ev ) {
 	};
 }
 
-function buildEdits( edits ) {
+function buildEdits( edits, original ) {
 	const out = {};
-	[
-		'occurredStart',
-		'regionName',
-		'imageUrl',
-		'imageAlt',
-		'videoEmbedUrl',
-	].forEach( ( key ) => {
+	[ 'occurredStart', 'regionName', 'imageUrl' ].forEach( ( key ) => {
 		if ( edits[ key ] !== '' ) {
 			out[ key ] = edits[ key ];
+		}
+	} );
+	// imageAlt/videoEmbedUrl are nullable on the node: a non-empty value sets
+	// the field, and clearing a field that previously had a value sends null to
+	// remove it. A field that was empty and stayed empty is simply omitted, so
+	// review submissions don't carry spurious nulls.
+	[ 'imageAlt', 'videoEmbedUrl' ].forEach( ( key ) => {
+		if ( edits[ key ] !== '' ) {
+			out[ key ] = edits[ key ];
+		} else if ( original[ key ] !== '' ) {
+			out[ key ] = null;
 		}
 	} );
 	if (
@@ -80,7 +85,7 @@ export default function EventReview( { event, onReviewed, onCancel } ) {
 		if ( decision ) {
 			body.event = decision;
 		}
-		const editBody = buildEdits( edits );
+		const editBody = buildEdits( edits, initialEdits( event ) );
 		if ( Object.keys( editBody ).length ) {
 			body.edits = editBody;
 		}

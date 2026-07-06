@@ -750,7 +750,9 @@ final class PublisherController {
 		}
 
 		foreach ( array( 'imageAlt', 'videoEmbedUrl' ) as $key ) {
-			if ( array_key_exists( $key, $raw ) ) {
+			// Nullable: null clears the field; a scalar sets it. Anything else
+			// (array/object) is dropped rather than stringified to "Array".
+			if ( array_key_exists( $key, $raw ) && ( null === $raw[ $key ] || is_scalar( $raw[ $key ] ) ) ) {
 				$edits[ $key ] = null === $raw[ $key ] ? null : (string) $raw[ $key ];
 			}
 		}
