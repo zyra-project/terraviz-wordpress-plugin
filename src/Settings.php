@@ -556,7 +556,7 @@ final class Settings {
 			'<p class="description">%s</p>',
 			sprintf(
 				/* translators: %s: the current user's mapped publish access. */
-				esc_html__( 'Your account currently maps to: %s. This mapping is not enforced yet — publishing is a later release.', 'terraviz' ),
+				esc_html__( 'Your account currently maps to: %s. WordPress enforces this mapping when you use the Terraviz Publisher dashboard.', 'terraviz' ),
 				'<strong>' . esc_html( $mine ) . '</strong>'
 			)
 		);
