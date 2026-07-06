@@ -62,6 +62,17 @@ Phase 2 — WordPress account mapping (still no catalog writes).
 - Read-only "Verify credential" probe (`GET /api/v1/publish/me`) that validates
   the stored token — reporting the recognised role/status — without mutating
   any Terraviz content. No publish path exists yet.
+- Distributable plugin packaging: `bin/build-zip.sh` produces an installable
+  `terraviz` ZIP (bundling the compiled blocks, stripping dev files via
+  `.distignore`), surfaced as a downloadable CI artifact on every run and as a
+  versioned asset on tagged GitHub Releases (`.github/workflows/release.yml`).
+  A `bin/check-version.sh` guard fails the build if the version disagrees across
+  its sources. See `docs/RELEASING.md`.
+
+### Fixed
+- Plugin activation/deactivation no longer fatals when a caller (e.g. WP-CLI)
+  invokes the `activate_terraviz` / `deactivate_terraviz` hook with `null`
+  instead of a boolean — the lifecycle callbacks now accept a nullable flag.
 
 ## [0.1.0] - Unreleased
 

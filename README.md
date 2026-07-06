@@ -62,6 +62,38 @@ composer run test       # PHPUnit (needs the WP test suite; see bin/install-wp-t
 
 Requires WordPress ≥ 6.1 and PHP ≥ 7.4. Licensed GPLv2-or-later.
 
+## Building an installable ZIP
+
+To produce a plugin ZIP you can upload to a WordPress site:
+
+```bash
+npm ci
+npm run package         # = npm run build && bash bin/build-zip.sh
+# → dist/terraviz-<version>.zip
+```
+
+The archive's inner folder is `terraviz` (the plugin slug), it bundles the
+compiled blocks from `build/`, and it strips dev files (`tests/`, `bin/`,
+`docs/`, config, node_modules, …) per [`.distignore`](.distignore).
+
+Install it via **WP Admin → Plugins → Add New → Upload Plugin**, choose the ZIP,
+then **Activate**.
+
+You don't have to build it yourself: every CI run publishes the same ZIP as a
+downloadable **`terraviz-plugin-zip`** artifact (Actions → the run → Artifacts).
+
+### Cutting a release
+
+Tagged releases publish a versioned ZIP to the repo's GitHub Releases:
+
+1. Bump the version everywhere (`bin/check-version.sh` enforces they agree — see
+   [`docs/RELEASING.md`](docs/RELEASING.md) for the full checklist).
+2. `git tag vX.Y.Z && git push --tags`.
+
+The `release` workflow builds the ZIP and attaches it to a new Release. See
+[`docs/RELEASING.md`](docs/RELEASING.md) for the maintainer runbook (and the
+future WordPress.org publishing path).
+
 ## Not in this phase
 
 The wp-admin publisher dashboard, asset upload, the service-token proxy,

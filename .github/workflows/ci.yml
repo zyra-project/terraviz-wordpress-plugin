@@ -22,6 +22,9 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Check version consistency
+        run: bash bin/check-version.sh
+
       - run: npm ci
       - run: npm run build
       - run: npm run lint:js
@@ -31,6 +34,16 @@ jobs:
         with:
           name: build
           path: build/
+          if-no-files-found: error
+
+      - name: Package installable plugin ZIP
+        run: bash bin/build-zip.sh
+
+      - name: Upload plugin ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraviz-plugin-zip
+          path: dist/terraviz-*.zip
           if-no-files-found: error
 
   lint-php:
