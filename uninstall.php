@@ -2,9 +2,10 @@
 /**
  * Uninstall cleanup for the Terraviz plugin.
  *
- * Removes the single settings option and any cached transients. Runs only
- * when the user deletes the plugin from wp-admin. On multisite, every site's
- * option and transients are cleaned.
+ * Removes the settings option, the stored publish credential, any cached
+ * transients, and the custom `manage_terraviz` capability. Runs only when the
+ * user deletes the plugin from wp-admin. On multisite, every site's option and
+ * transients are cleaned.
  *
  * @package Terraviz
  */
@@ -25,6 +26,18 @@ function terraviz_uninstall_current_site(): void {
 	global $wpdb;
 
 	delete_option( 'terraviz_settings' );
+	delete_option( 'terraviz_credential' );
+
+	// Drop the custom capability from every role that carries it.
+	if ( function_exists( 'wp_roles' ) ) {
+		$terraviz_roles = wp_roles();
+		foreach ( array_keys( $terraviz_roles->roles ) as $terraviz_role_name ) {
+			$terraviz_role = get_role( $terraviz_role_name );
+			if ( $terraviz_role instanceof WP_Role && $terraviz_role->has_cap( 'manage_terraviz' ) ) {
+				$terraviz_role->remove_cap( 'manage_terraviz' );
+			}
+		}
+	}
 
 	if ( ! isset( $wpdb ) || ! $wpdb instanceof wpdb ) {
 		return;

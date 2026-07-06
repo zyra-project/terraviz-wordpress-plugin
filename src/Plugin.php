@@ -111,19 +111,69 @@ final class Plugin {
 	}
 
 	/**
-	 * Activation: nothing to provision in Phase 1 (no tables, no cron). We
-	 * simply seed default settings if absent.
+	 * Activation: seed default settings if absent, and grant the plugin's
+	 * custom `manage_terraviz` capability to administrators. No tables, no
+	 * cron, no credential is provisioned.
+	 *
+	 * Options and roles are per-site, so on a network-wide multisite activation
+	 * we apply them to every site (mirroring `uninstall.php`).
+	 *
+	 * @param bool $network_wide True when activated network-wide on multisite.
 	 */
-	public static function on_activate(): void {
-		if ( false === get_option( Support\Options::OPTION, false ) ) {
-			add_option( Support\Options::OPTION, Support\Options::defaults() );
-		}
+	public static function on_activate( bool $network_wide = false ): void {
+		self::for_each_site(
+			static function (): void {
+				if ( false === get_option( Support\Options::OPTION, false ) ) {
+					add_option( Support\Options::OPTION, Support\Options::defaults() );
+				}
+
+				Support\Capabilities::grant();
+			},
+			$network_wide
+		);
 	}
 
 	/**
-	 * Deactivation: drop cached catalog data so a re-activation starts fresh.
+	 * Deactivation: drop cached catalog data so a re-activation starts fresh,
+	 * and remove the custom capability so no orphaned grant lingers. The
+	 * stored credential (if any) is left in place — deactivation is not
+	 * uninstall.
+	 *
+	 * @param bool $network_wide True when deactivated network-wide on multisite.
 	 */
-	public static function on_deactivate(): void {
-		Catalog::flush();
+	public static function on_deactivate( bool $network_wide = false ): void {
+		self::for_each_site(
+			static function (): void {
+				Catalog::flush();
+				Support\Capabilities::revoke();
+			},
+			$network_wide
+		);
+	}
+
+	/**
+	 * Run a callback once for the current site, or for every site on the
+	 * network when a plugin lifecycle event fires network-wide on multisite.
+	 *
+	 * @param callable $callback     Per-site work.
+	 * @param bool     $network_wide Whether the event was network-wide.
+	 */
+	private static function for_each_site( callable $callback, bool $network_wide ): void {
+		if ( $network_wide && is_multisite() ) {
+			$site_ids = get_sites(
+				array(
+					'fields' => 'ids',
+					'number' => 0,
+				)
+			);
+			foreach ( $site_ids as $site_id ) {
+				switch_to_blog( (int) $site_id );
+				$callback();
+				restore_current_blog();
+			}
+			return;
+		}
+
+		$callback();
 	}
 }
