@@ -15,6 +15,91 @@
 
 	var SELECTOR = '.terraviz-embed__media[data-terraviz-src]';
 
+	// Fullscreen support varies by vendor; resolve the available methods once.
+	function fullscreenSupported() {
+		return !! (
+			document.fullscreenEnabled || document.webkitFullscreenEnabled
+		);
+	}
+
+	function fullscreenElement() {
+		return document.fullscreenElement || document.webkitFullscreenElement || null;
+	}
+
+	function requestFullscreen( el ) {
+		if ( el.requestFullscreen ) {
+			return el.requestFullscreen();
+		}
+		if ( el.webkitRequestFullscreen ) {
+			return el.webkitRequestFullscreen();
+		}
+	}
+
+	function exitFullscreen() {
+		if ( document.exitFullscreen ) {
+			return document.exitFullscreen();
+		}
+		if ( document.webkitExitFullscreen ) {
+			return document.webkitExitFullscreen();
+		}
+	}
+
+	function labels( media ) {
+		var title = media.getAttribute( 'data-terraviz-title' ) || 'Terraviz';
+		return {
+			enter: 'Enter fullscreen: ' + title,
+			exit: 'Exit fullscreen: ' + title,
+		};
+	}
+
+	// A single toggle button, overlaid on the globe once it has loaded.
+	function addFullscreenButton( media ) {
+		if ( ! fullscreenSupported() ) {
+			return;
+		}
+
+		var text = labels( media );
+		var btn = document.createElement( 'button' );
+		btn.type = 'button';
+		btn.className = 'terraviz-embed__fullscreen';
+		btn.setAttribute( 'aria-label', text.enter );
+		btn.setAttribute( 'title', text.enter );
+		// Two icons (expand / compress); CSS shows the one matching the state.
+		btn.innerHTML =
+			'<svg class="terraviz-embed__fs-enter" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">' +
+			'<path fill="currentColor" d="M4 4h6v2H6v4H4V4zm10 0h6v6h-2V6h-4V4zM4 14h2v4h4v2H4v-6zm16 0v6h-6v-2h4v-4h2z"/></svg>' +
+			'<svg class="terraviz-embed__fs-exit" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">' +
+			'<path fill="currentColor" d="M8 4h2v6H4V8h4V4zm6 0h2v4h4v2h-6V4zM4 14h6v6H8v-4H4v-2zm10 0h6v2h-4v4h-2v-6z"/></svg>';
+
+		btn.addEventListener( 'click', function ( ev ) {
+			ev.preventDefault();
+			if ( fullscreenElement() === media ) {
+				exitFullscreen();
+			} else {
+				var res = requestFullscreen( media );
+				if ( res && typeof res.catch === 'function' ) {
+					res.catch( function () {
+						/* user gesture rejected / not permitted */
+					} );
+				}
+			}
+		} );
+
+		// Keep the label/pressed-state in sync with the actual fullscreen state.
+		function sync() {
+			var active = fullscreenElement() === media;
+			media.classList.toggle( 'is-fullscreen', active );
+			btn.setAttribute( 'aria-pressed', active ? 'true' : 'false' );
+			btn.setAttribute( 'aria-label', active ? text.exit : text.enter );
+			btn.setAttribute( 'title', active ? text.exit : text.enter );
+		}
+		sync();
+		document.addEventListener( 'fullscreenchange', sync );
+		document.addEventListener( 'webkitfullscreenchange', sync );
+
+		media.appendChild( btn );
+	}
+
 	function buildIframe( media ) {
 		var src = media.getAttribute( 'data-terraviz-src' );
 		var title = media.getAttribute( 'data-terraviz-title' ) || 'Terraviz';
@@ -44,6 +129,9 @@
 		} else {
 			media.appendChild( iframe );
 		}
+
+		// Offer a fullscreen toggle now that a real globe is present.
+		addFullscreenButton( media );
 
 		// Move keyboard focus into the freshly loaded globe for a11y.
 		try {
