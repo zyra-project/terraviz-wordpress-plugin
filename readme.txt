@@ -1,8 +1,8 @@
 === Terraviz ===
 Contributors: zyraproject
-Tags: terraviz, globe, noaa, science on a sphere, embed
+Tags: terraviz, globe, embed, visualization, iframe
 Requires at least: 6.1
-Tested up to: 6.7
+Tested up to: 7.0
 Requires PHP: 7.4
 Stable tag: 0.1.0
 License: GPLv2 or later
@@ -34,7 +34,7 @@ The plugin makes no surprise outbound calls. Its only network requests are to th
 1. Upload the `terraviz` folder to `/wp-content/plugins/`, or install through the Plugins screen.
 2. Activate the plugin.
 3. (Optional) Visit **Settings → Terraviz** to set the node origin and default embed options. The defaults work out of the box against the canonical public node.
-4. Add a **Terraviz Dataset**, **Tour**, or **Catalog** block to any page or post, or use the `[terraviz dataset="..."]` shortcode.
+4. Add a **Terraviz Dataset**, **Tour**, **Catalog**, **Right-Now Hero**, or **Related Datasets** block to any page or post, or use the `[terraviz dataset="..."]` shortcode.
 
 == Frequently Asked Questions ==
 
