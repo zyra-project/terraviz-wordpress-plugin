@@ -129,13 +129,26 @@ license. The publish routes need only the Access headers + a JSON body (no
 CSRF/anti-forgery handshake to replicate). See
 `functions/api/v1/publish/datasets*.ts` upstream.
 
-### Phase 3b — asset upload 🔜
+### Phase 3b — asset upload ✅
 
-- **Asset upload**: the two-step presigned-R2 flow (init `POST .../asset` →
-  browser PUTs bytes directly to the presigned URL with a client-computed
-  `sha256:` digest → `POST .../asset/:upload_id/complete`), proxied so only the
-  short-lived presigned URL reaches the browser. Video returns `202` and
-  transcodes asynchronously.
+| Item | Status | Where |
+|---|---|---|
+| Proxy `init` (`POST .../asset`) + `complete` (`POST .../asset/:upload_id/complete`) methods | ✅ | `src/Api/PublishClient.php` |
+| REST `POST /publisher/datasets/:id/asset` + `.../complete`, under the same published-lifecycle gate as edit, with an init-body allowlist (`kind`/`mime`/`size`/`content_digest`) | ✅ | `src/Rest/PublisherController.php` |
+| Upload UI: client-side `sha256` (`crypto.subtle`) → `init` → **direct** `PUT` to the presigned R2 URL → `complete`; reflects the `202` video-transcoding state and refreshes the dataset | ✅ | `blocks/admin/{AssetUploader,upload}.js`, `blocks/admin/DatasetForm.js` |
+
+Only the short-lived presigned URL reaches the browser; the service token stays
+server-side. Video returns `202` and transcodes asynchronously.
+
+> **Operator note:** the byte `PUT` is a cross-origin request from the WordPress
+> site to the node's R2 bucket, so the bucket's CORS policy must allow the WP
+> site's origin. This is inherent to the "presigned, token-stays-server-side"
+> design (streaming multi-GB video through PHP isn't viable). A failed PUT
+> surfaces a message pointing at the CORS requirement.
+>
+> **Known limit:** the browser hashes the whole file via `crypto.subtle.digest`
+> (whole-file, in memory), so extremely large videos may be slow or
+> memory-bound; a streaming/chunked hash is a later enhancement.
 
 Known limitation (upstream §5 Option 1): actions are attributed to the shared
 `service` identity, not the individual WP user. The dashboard surfaces this.

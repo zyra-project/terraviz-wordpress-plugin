@@ -20,6 +20,7 @@ import {
 	normalizeError,
 } from './api';
 import { deriveStatus } from './status';
+import AssetUploader from './AssetUploader';
 
 const FORMATS = [
 	'video/mp4',
@@ -421,6 +422,18 @@ export default function DatasetForm( { id, canPublish, onSaved, onCancel } ) {
 					</p>
 				) }
 			</fieldset>
+
+			{ isEdit && (
+				<AssetUploader
+					id={ id }
+					onUploaded={ ( ds ) => {
+						if ( ds ) {
+							setDataset( ds );
+							setValues( fromDataset( ds ) );
+						}
+					} }
+				/>
+			) }
 
 			<div style={ { display: 'flex', gap: '8px', marginTop: '16px' } }>
 				<Button

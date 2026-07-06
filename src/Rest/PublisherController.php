@@ -183,6 +183,26 @@ final class PublisherController {
 				'permission_callback' => array( $this, 'require_publish' ),
 			)
 		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			self::BASE . '/' . self::ID_PATTERN . '/asset',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'init_asset' ),
+				'permission_callback' => array( $this, 'require_draft' ),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			self::BASE . '/' . self::ID_PATTERN . '/asset/(?P<upload_id>[A-Za-z0-9._-]+)/complete',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'complete_asset' ),
+				'permission_callback' => array( $this, 'require_draft' ),
+			)
+		);
 	}
 
 	/**
@@ -268,29 +288,69 @@ final class PublisherController {
 
 		$id = (string) $request->get_param( 'id' );
 
-		// Editing a *published* dataset changes live catalog content — a
-		// publish-tier action. A draft-tier user may only edit drafts and
-		// retracted rows. Because every WP user acts under one shared Terraviz
-		// `service` identity, this boundary can only be enforced here: check the
-		// target's current state before forwarding the write. Publish-tier users
-		// skip the extra fetch.
-		if ( ! Capabilities::can_publish() ) {
-			$current = $client->get_dataset( $id );
-			if ( $current['ok'] && $this->is_published( $current['data'] ) ) {
-				return new WP_REST_Response(
-					array(
-						'error'   => 'forbidden_published',
-						'message' => __( 'Editing a published dataset requires publish permissions. Ask an editor, or retract it first.', 'terraviz' ),
-						'errors'  => array(),
-					),
-					403
-				);
-			}
+		$blocked = $this->published_edit_guard( $client, $id );
+		if ( null !== $blocked ) {
+			return $blocked;
 		}
 
 		$body = $this->normalize_dataset_body( (array) $request->get_json_params() );
 
 		return $this->respond( $client->update_dataset( $id, $body ) );
+	}
+
+	/**
+	 * Guard changes to *published* catalog content. Editing a published dataset,
+	 * or uploading a new asset to one, changes live content — a publish-tier
+	 * action. A draft-tier user may only touch drafts and retracted rows. Because
+	 * every WP user acts under one shared Terraviz `service` identity, this
+	 * boundary can only be enforced here: check the target's current state before
+	 * forwarding the write. Publish-tier users skip the extra fetch.
+	 *
+	 * The plugin is the *only* tier gate (the node authorises the shared
+	 * identity for everything), so when the state fetch fails for a reason other
+	 * than a plain 404 we fail **closed** rather than risk forwarding a
+	 * draft-tier write to a published dataset.
+	 *
+	 * @param PublishClient $client Proxy client.
+	 * @param string        $id     Dataset id.
+	 * @return WP_REST_Response|null A 403 response when blocked, else null.
+	 */
+	private function published_edit_guard( PublishClient $client, string $id ): ?WP_REST_Response {
+		if ( Capabilities::can_publish() ) {
+			return null;
+		}
+
+		$current = $client->get_dataset( $id );
+
+		if ( ! $current['ok'] ) {
+			// A plain 404 is harmless to forward — the write returns the node's
+			// own 404 and nothing changes. Any other failure means we could not
+			// confirm the state, so fail closed.
+			if ( 404 === $current['status'] ) {
+				return null;
+			}
+			return new WP_REST_Response(
+				array(
+					'error'   => 'state_unverified',
+					'message' => __( 'Could not verify the dataset’s state; please try again.', 'terraviz' ),
+					'errors'  => array(),
+				),
+				502
+			);
+		}
+
+		if ( $this->is_published( $current['data'] ) ) {
+			return new WP_REST_Response(
+				array(
+					'error'   => 'forbidden_published',
+					'message' => __( 'Changing a published dataset requires publish permissions. Ask an editor, or retract it first.', 'terraviz' ),
+					'errors'  => array(),
+				),
+				403
+			);
+		}
+
+		return null;
 	}
 
 	/**
@@ -349,6 +409,85 @@ final class PublisherController {
 		}
 
 		return $this->respond( $client->delete_dataset( (string) $request->get_param( 'id' ) ) );
+	}
+
+	/**
+	 * POST an asset-upload init. Returns the presigned R2 `PUT` the browser
+	 * uses to upload the bytes directly.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function init_asset( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		$id = (string) $request->get_param( 'id' );
+
+		$blocked = $this->published_edit_guard( $client, $id );
+		if ( null !== $blocked ) {
+			return $blocked;
+		}
+
+		$body = $this->normalize_asset_init( (array) $request->get_json_params() );
+
+		return $this->respond( $client->init_asset( $id, $body ) );
+	}
+
+	/**
+	 * POST an asset-upload completion. The node re-verifies the digest and
+	 * swaps the dataset's ref (a `202` means a video transcode was dispatched).
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function complete_asset( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		$id = (string) $request->get_param( 'id' );
+
+		$blocked = $this->published_edit_guard( $client, $id );
+		if ( null !== $blocked ) {
+			return $blocked;
+		}
+
+		return $this->respond( $client->complete_asset( $id, (string) $request->get_param( 'upload_id' ) ) );
+	}
+
+	/**
+	 * Reduce an asset-init body to the allowlisted single-file fields. The node
+	 * validates the enum / size caps / digest format authoritatively.
+	 *
+	 * @param array<string,mixed> $raw Decoded JSON body.
+	 * @return array<string,mixed>
+	 */
+	public function normalize_asset_init( array $raw ): array {
+		$out = array();
+
+		if ( isset( $raw['kind'] ) && is_string( $raw['kind'] ) ) {
+			$out['kind'] = sanitize_text_field( $raw['kind'] );
+		}
+		if ( isset( $raw['mime'] ) && is_string( $raw['mime'] ) ) {
+			$out['mime'] = sanitize_text_field( $raw['mime'] );
+		}
+		if ( isset( $raw['size'] ) ) {
+			// A byte count: accept only a non-negative integer (reject floats
+			// like "1.5" and negatives). The node enforces the per-kind caps.
+			$size = filter_var( $raw['size'], FILTER_VALIDATE_INT, array( 'options' => array( 'min_range' => 0 ) ) );
+			if ( false !== $size ) {
+				$out['size'] = $size;
+			}
+		}
+		if ( isset( $raw['content_digest'] ) && is_string( $raw['content_digest'] ) ) {
+			$out['content_digest'] = sanitize_text_field( $raw['content_digest'] );
+		}
+
+		return $out;
 	}
 
 	/**

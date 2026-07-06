@@ -182,6 +182,36 @@ final class PublishClient {
 	}
 
 	/**
+	 * `POST /api/v1/publish/datasets/:id/asset` — begin an asset upload.
+	 *
+	 * Returns a presigned R2 `PUT` the browser uses to upload the bytes
+	 * directly (the service token never touches the upload).
+	 *
+	 * @param string              $id   Dataset id.
+	 * @param array<string,mixed> $body `{ kind, mime, size, content_digest }`.
+	 * @return array<string,mixed>
+	 */
+	public function init_asset( string $id, array $body ): array {
+		return $this->send( 'POST', '/api/v1/publish/datasets/' . rawurlencode( $id ) . '/asset', $body );
+	}
+
+	/**
+	 * `POST /api/v1/publish/datasets/:id/asset/:upload_id/complete` — finalise
+	 * an upload. The node re-verifies the digest and swaps the dataset's ref.
+	 *
+	 * @param string $id        Dataset id.
+	 * @param string $upload_id Upload id from init.
+	 * @return array<string,mixed>
+	 */
+	public function complete_asset( string $id, string $upload_id ): array {
+		return $this->send(
+			'POST',
+			'/api/v1/publish/datasets/' . rawurlencode( $id ) . '/asset/' . rawurlencode( $upload_id ) . '/complete',
+			array()
+		);
+	}
+
+	/**
 	 * Perform a request and normalise the response.
 	 *
 	 * @param string                   $method HTTP method.

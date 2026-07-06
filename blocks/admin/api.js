@@ -42,6 +42,23 @@ export function deleteDataset( id ) {
 	return apiFetch( { url: datasetUrl( id ), method: 'DELETE' } );
 }
 
+export function initAsset( id, data ) {
+	return apiFetch( {
+		url: `${ datasetUrl( id ) }/asset`,
+		method: 'POST',
+		data,
+	} );
+}
+
+export function completeAsset( id, uploadId ) {
+	return apiFetch( {
+		url: `${ datasetUrl( id ) }/asset/${ encodeURIComponent(
+			uploadId
+		) }/complete`,
+		method: 'POST',
+	} );
+}
+
 /**
  * Normalise an apiFetch rejection into `{ message, errors }`. apiFetch rejects
  * with the parsed JSON error body, so field-validation errors from the node
