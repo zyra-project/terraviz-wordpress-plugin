@@ -65,6 +65,23 @@ class CapabilitiesTest extends WP_UnitTestCase {
 		$this->assertSame( Capabilities::INTENT_EMBED, Capabilities::intent_for( $contributor ) );
 	}
 
+	public function test_tier_helpers_follow_roles(): void {
+		Capabilities::grant();
+
+		$editor      = self::factory()->user->create( array( 'role' => 'editor' ) );
+		$author      = self::factory()->user->create( array( 'role' => 'author' ) );
+		$contributor = self::factory()->user->create( array( 'role' => 'contributor' ) );
+
+		$this->assertTrue( Capabilities::can_draft( $editor ) );
+		$this->assertTrue( Capabilities::can_publish( $editor ) );
+
+		$this->assertTrue( Capabilities::can_draft( $author ) );
+		$this->assertFalse( Capabilities::can_publish( $author ) );
+
+		$this->assertFalse( Capabilities::can_draft( $contributor ) );
+		$this->assertFalse( Capabilities::can_publish( $contributor ) );
+	}
+
 	public function test_grant_and_revoke_manage_capability(): void {
 		Capabilities::grant();
 		$admin = get_role( 'administrator' );

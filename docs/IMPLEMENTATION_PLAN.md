@@ -106,19 +106,39 @@ upstream.
 
 ---
 
-## Phase 3 — authenticated publisher dashboard ⏳ (plugin repo + service token)
+## Phase 3 — authenticated publisher dashboard (plugin repo + service token)
 
-- **Server-side publish proxy** (Goal 3): every `/api/v1/publish/**` call goes
-  through PHP, which attaches a Cloudflare Access **service token**
-  (`Cf-Access-Client-Id` / `-Secret`); the token stays server-side and never
-  reaches the browser.
-- Dataset **list + create / edit / publish / retract** screens in `wp-admin`.
-- **Asset upload**: the two-step presigned-R2 flow (init → browser PUTs bytes
-  directly to the presigned URL → complete), proxied so only the short-lived
-  presigned URL reaches the browser.
+Sliced into 3a (the proxy + dataset CRUD/lifecycle spine) and 3b (asset
+upload), so the security-critical proxy lands and is reviewed before the
+complex upload flow is layered on.
+
+### Phase 3a — publish proxy + dataset CRUD/lifecycle ✅
+
+| Item | Status | Where |
+|---|---|---|
+| **Server-side publish proxy** (Goal 3): the stored service token is attached in PHP and Cloudflare's edge exchanges it for a JWT — the token never reaches the browser | ✅ | `src/Api/PublishClient.php` |
+| Same-origin REST proxy `terraviz/v1/publisher/datasets*`, gated by the Phase-2 capability tiers (draft vs publish) + a credential-configured check; dataset body passed through a strict field allowlist | ✅ | `src/Rest/PublisherController.php` |
+| Dataset **list / create / edit / publish / retract / delete** dashboard (a React `@wordpress/element` app) with inline field-validation errors | ✅ | `src/Admin/Dashboard.php`, `blocks/admin/*`, `webpack.config.js` |
+| `manage_terraviz` → dashboard visibility; the REST layer re-checks `can_draft` / `can_publish` per call | ✅ | `src/Support/Capabilities.php` |
+
+Verified upstream contracts: dataset lifecycle is derived from
+`published_at`/`retracted_at` (no status column) and driven by separate
+`POST .../publish` and `.../retract` routes; create needs only `title` +
+`format`; publish additionally requires `slug, visibility, data_ref` and a
+license. The publish routes need only the Access headers + a JSON body (no
+CSRF/anti-forgery handshake to replicate). See
+`functions/api/v1/publish/datasets*.ts` upstream.
+
+### Phase 3b — asset upload 🔜
+
+- **Asset upload**: the two-step presigned-R2 flow (init `POST .../asset` →
+  browser PUTs bytes directly to the presigned URL with a client-computed
+  `sha256:` digest → `POST .../asset/:upload_id/complete`), proxied so only the
+  short-lived presigned URL reaches the browser. Video returns `202` and
+  transcodes asynchronously.
 
 Known limitation (upstream §5 Option 1): actions are attributed to the shared
-`service` identity, not the individual WP user.
+`service` identity, not the individual WP user. The dashboard surfaces this.
 
 ---
 
