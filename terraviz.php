@@ -3,7 +3,7 @@
  * Plugin Name:       Terraviz
  * Plugin URI:        https://github.com/zyra-project/terraviz-wordpress-plugin
  * Description:        Embed live Terraviz "Science On a Sphere" globes into WordPress with an accessible, indexable server-side fallback, plus an optional dashboard to publish and manage Terraviz datasets.
- * Version:           0.3.0
+ * Version:           0.4.0
  * Requires at least: 6.1
  * Requires PHP:      7.4
  * Author:            Zyra Project
@@ -50,7 +50,7 @@ if ( defined( 'TERRAVIZ_VERSION' ) ) {
 /**
  * Plugin version. Kept in lock-step with the header above and readme.txt.
  */
-define( 'TERRAVIZ_VERSION', '0.3.0' );
+define( 'TERRAVIZ_VERSION', '0.4.0' );
 
 /**
  * Absolute path to this plugin's main file.

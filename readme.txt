@@ -4,7 +4,7 @@ Tags: terraviz, globe, embed, visualization, iframe
 Requires at least: 6.1
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.3.0
+Stable tag: 0.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -30,6 +30,7 @@ It is a **host-side adapter**, not a reimplementation: the globe runs inside an 
 * **Asset upload** for dataset media, sent directly from the browser to the node's storage via short-lived presigned URLs.
 * **WordPress-native authorization**: what a user may do maps from their WordPress role — authors draft, editors publish, administrators configure. Every Terraviz write is proxied through PHP under a single shared node credential; the token never reaches the browser.
 * Because writes share one node-scoped "service" identity, Terraviz attributes every action to that identity rather than the individual WordPress user, and the dashboard makes this explicit.
+* **Surface a WordPress post in Terraviz** (optional): a "Show this post in Terraviz" toggle in the post editor publishes a short, linked-back summary of a published post to the Terraviz blog for in-globe discovery, carrying the datasets/tours cited by the Terraviz blocks in the post. WordPress stays the source of truth — only a summary and a link home are sent, and turning the toggle off (or unpublishing the post) removes it again.
 
 A settings screen (**Settings → Terraviz**) chooses which Terraviz node embeds point at (default: the canonical public node), sets default view options, controls the loading/telemetry posture, and stores the optional publishing service token.
 
@@ -41,6 +42,7 @@ This plugin communicates with a **Terraviz node** — a third-party service, by 
 * **Loading the interactive globe (visitor's browser).** The globe loads in an iframe served directly from the node in each visitor's browser — nothing is proxied through your site. The node, not this plugin, governs that frame and any telemetry it carries; account for it as you would any embedded third-party iframe in your own privacy policy.
 * **Publishing (server-side, only when configured).** If an administrator has stored a publishing service token and a permitted user acts in the Publisher dashboard, the dataset fields you enter and your lifecycle actions (create, update, publish, retract, delete) are sent from PHP to the node's publish API. That API sits behind **Cloudflare Access**; the plugin attaches a Cloudflare Access service token (a client id + client secret) as request headers on the server. The secret is encrypted at rest and is never sent to the browser.
 * **Uploading assets (browser → storage).** When you upload dataset media, the file is hashed in your browser and its bytes are uploaded **directly from your browser to the node's Cloudflare R2 storage** through a short-lived presigned URL the plugin obtains server-side. The plugin proxies only small init/complete metadata; the service token is never exposed to the browser.
+* **Surfacing a post in Terraviz (server-side, only when opted in).** If a permitted user turns on "Show this post in Terraviz" for a published post, the plugin sends that post's title, a short summary, its public URL, and the ids of the datasets/tours it cites from PHP to the node's blog API (behind the same Cloudflare Access service token). Only that summary and link are sent — never the full post body — and it is removed when the post is opted out, unpublished, or deleted.
 
 No third-party assets are bundled or loaded from CDNs, and the plugin makes no other outbound calls.
 
@@ -103,6 +105,9 @@ Attributes: `dataset`, `tour`, `catalog`, `hero`, `related`, `origin`, `terrain`
 
 == Changelog ==
 
+= 0.4.0 =
+* Post/blog bridge: a "Show this post in Terraviz" toggle in the post editor publishes a short, linked-back summary of a published post to the Terraviz blog for in-globe discovery, carrying the datasets/tours cited by the Terraviz blocks in the post. One-way only — WordPress stays the source of truth; opting out, unpublishing, or deleting the post removes the summary.
+
 = 0.3.0 =
 * Publisher dashboard in wp-admin: list datasets by lifecycle state, create and edit drafts, and publish, retract, or delete them — all proxied server-side under a single shared node credential, so the token never reaches the browser.
 * Direct-to-storage asset upload for dataset media, via short-lived presigned URLs (the file is hashed in the browser; bytes go straight to the node's storage).
@@ -121,6 +126,9 @@ Attributes: `dataset`, `tour`, `catalog`, `hero`, `related`, `origin`, `terrain`
 * PHP wire-contract types generated from Terraviz's published `/schema/v1` JSON Schema.
 
 == Upgrade Notice ==
+
+= 0.4.0 =
+Adds an optional "Show this post in Terraviz" toggle that publishes a linked-back post summary to the Terraviz blog for discovery. Embedding and the publisher dashboard are unchanged.
 
 = 0.3.0 =
 Adds an optional publisher dashboard for managing Terraviz datasets from wp-admin. Embedding is unchanged and still needs no account; publishing is opt-in and requires an administrator to store a Terraviz service token.
