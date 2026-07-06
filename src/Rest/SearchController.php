@@ -110,9 +110,11 @@ final class SearchController {
 		/**
 		 * Filter the maximum number of rows the editor picker returns.
 		 *
-		 * @param int $limit Default row cap.
+		 * @param int    $limit Default row cap.
+		 * @param string $q     The search query.
+		 * @param string $type  Search scope: 'dataset' | 'tour' | 'all'.
 		 */
-		$limit = (int) apply_filters( 'terraviz_search_limit', self::DEFAULT_LIMIT );
+		$limit = (int) apply_filters( 'terraviz_search_limit', self::DEFAULT_LIMIT, $q, $type );
 		if ( $limit < 1 ) {
 			$limit = self::DEFAULT_LIMIT;
 		}
