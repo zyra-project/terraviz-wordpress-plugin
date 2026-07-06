@@ -22,5 +22,11 @@ module.exports = {
 			'post-panel',
 			'index.js'
 		),
+		'event-panel/index': path.resolve(
+			process.cwd(),
+			'blocks',
+			'event-panel',
+			'index.js'
+		),
 	},
 };
