@@ -109,6 +109,11 @@ final class PublishClient {
 			}
 		}
 		if ( ! empty( $clean ) ) {
+			// Single-encode: add_query_arg() only urlencode_deep()s params already
+			// present in the base URL (there are none here) and emits newly-added
+			// args verbatim via build_query( urlencode: false ), so the
+			// rawurlencode() is the one and only encoding — required so a cursor
+			// containing '+' or '/' round-trips correctly.
 			$path = add_query_arg( array_map( 'rawurlencode', $clean ), $path );
 		}
 

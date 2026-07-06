@@ -397,13 +397,15 @@ final class PublisherController {
 
 		foreach ( self::BOOL_FIELDS as $key ) {
 			if ( array_key_exists( $key, $raw ) ) {
-				$out[ $key ] = (bool) $raw[ $key ];
+				// rest_sanitize_boolean() so a stringy "false"/"0" from a
+				// non-dashboard caller doesn't coerce to true via (bool).
+				$out[ $key ] = rest_sanitize_boolean( $raw[ $key ] );
 			}
 		}
 
 		foreach ( self::NULLABLE_BOOL_FIELDS as $key ) {
 			if ( array_key_exists( $key, $raw ) ) {
-				$out[ $key ] = null === $raw[ $key ] ? null : (bool) $raw[ $key ];
+				$out[ $key ] = null === $raw[ $key ] ? null : rest_sanitize_boolean( $raw[ $key ] );
 			}
 		}
 

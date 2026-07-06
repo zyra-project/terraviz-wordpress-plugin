@@ -119,7 +119,7 @@ complex upload flow is layered on.
 | **Server-side publish proxy** (Goal 3): the stored service token is attached in PHP and Cloudflare's edge exchanges it for a JWT — the token never reaches the browser | ✅ | `src/Api/PublishClient.php` |
 | Same-origin REST proxy `terraviz/v1/publisher/datasets*`, gated by the Phase-2 capability tiers (draft vs publish) + a credential-configured check; dataset body passed through a strict field allowlist | ✅ | `src/Rest/PublisherController.php` |
 | Dataset **list / create / edit / publish / retract / delete** dashboard (a React `@wordpress/element` app) with inline field-validation errors | ✅ | `src/Admin/Dashboard.php`, `blocks/admin/*`, `webpack.config.js` |
-| `manage_terraviz` → dashboard visibility; the REST layer re-checks `can_draft` / `can_publish` per call | ✅ | `src/Support/Capabilities.php` |
+| Dashboard menu visible to the draft tier (`publish_posts`); the REST layer re-checks the precise tier (`can_draft` / `can_publish`) per call | ✅ | `src/Support/Capabilities.php`, `src/Admin/Dashboard.php` |
 
 Verified upstream contracts: dataset lifecycle is derived from
 `published_at`/`retracted_at` (no status column) and driven by separate

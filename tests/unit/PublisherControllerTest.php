@@ -82,6 +82,20 @@ class PublisherControllerTest extends WP_UnitTestCase {
 		$this->assertSame( array( 'title' => 'Keep' ), $out );
 	}
 
+	public function test_normalize_parses_stringy_booleans(): void {
+		$out = $this->controller->normalize_dataset_body(
+			array(
+				'is_hidden'        => 'false',
+				'run_tour_on_load' => '0',
+				'is_flipped_in_y'  => 'true',
+			)
+		);
+
+		$this->assertFalse( $out['is_hidden'] );
+		$this->assertFalse( $out['run_tour_on_load'] );
+		$this->assertTrue( $out['is_flipped_in_y'] );
+	}
+
 	public function test_normalize_preserves_multiline_free_text(): void {
 		$out = $this->controller->normalize_dataset_body(
 			array( 'abstract' => "Line one\nLine two <b>kept</b>" )
