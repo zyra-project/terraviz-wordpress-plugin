@@ -1,6 +1,6 @@
 <?php
 /**
- * The inert Cloudflare Access service-token slot (Phase 2).
+ * The Cloudflare Access service-token slot for the publisher path.
  *
  * @package Terraviz
  */
@@ -21,9 +21,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  * the request ever reaches the node, so the plugin only ever sends the two
  * headers.
  *
- * In Phase 2 the slot is **inert**: nothing publishes. Its only consumer is
- * the read-only `GET /api/v1/publish/me` probe that validates the credential
- * before any write path exists (Phase 3).
+ * The stored token authenticates the server-side publish path: `PublishClient`
+ * attaches it to every dataset write, and the read-only
+ * `GET /api/v1/publish/me` probe validates it from the settings screen.
  *
  * Storage posture:
  *  - Kept in its **own** option, deliberately *not* in the main

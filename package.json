@@ -1,7 +1,7 @@
 {
 	"name": "terraviz-wordpress-plugin",
-	"version": "0.1.0",
-	"description": "Embed live Terraviz \"Science On a Sphere\" globes into WordPress pages and posts.",
+	"version": "0.3.0",
+	"description": "Embed live Terraviz \"Science On a Sphere\" globes into WordPress, plus an optional dashboard to publish and manage Terraviz datasets.",
 	"author": "Zyra Project",
 	"license": "GPL-2.0-or-later",
 	"private": true,

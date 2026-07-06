@@ -20,64 +20,42 @@ Phase 4 — post/blog bridge (one-way WP → Terraviz discovery).
   cron event so saving a post never blocks on the network. Turning the toggle
   off, unpublishing, or deleting the post takes the stub down.
 
-## [Unreleased — Phase 3b]
+## [0.3.0] - 2026-07-06
 
-Phase 3b — asset upload for the publisher dashboard.
-
-### Added
-- Asset upload through the presigned-R2 flow: the browser hashes the file
-  (`sha256`), the plugin proxies `init` to mint a short-lived presigned `PUT`,
-  the browser uploads the bytes **directly** to storage, and the plugin proxies
-  `complete` (the node re-verifies the digest and sets the dataset's ref). The
-  service token never touches the upload. Video uploads transcode
-  asynchronously (HTTP 202), reflected in the UI.
-- REST `POST /publisher/datasets/:id/asset` and `.../asset/:upload_id/complete`,
-  under the same published-lifecycle authorization gate as dataset edits, with
-  an init-body allowlist.
-
-Operator note: the direct byte upload is cross-origin, so the node's storage
-bucket must allow the WordPress site's origin (CORS).
-
-## [Unreleased — Phase 3a]
-
-Phase 3a — the authenticated publisher dashboard (dataset CRUD/lifecycle).
+Phases 2–3 — WordPress account mapping and the authenticated publisher dashboard.
 
 ### Added
-- Server-side **publish proxy**: `PublishClient` now performs the full dataset
-  write set (list/create/update/publish/retract/delete) against the Terraviz
-  publish API, attaching the stored Cloudflare Access service token in PHP so
-  it never reaches the browser.
-- Same-origin REST proxy `terraviz/v1/publisher/datasets*`, gated by the
-  Phase-2 capability tiers (draft tier for create/edit drafts, publish tier for
-  publish/retract/delete — and for editing an already-published dataset, since
-  that changes live content) plus a credential-configured check. The dataset body
-  is reduced to an allowlist of known fields before it is forwarded; the node
-  remains the authoritative validator.
-- A **wp-admin publisher dashboard** (a React `@wordpress/element` app): list
+- **Publisher dashboard** (wp-admin, a React `@wordpress/element` app): list
   datasets by lifecycle state, create/edit drafts with inline field-validation
   errors, and publish/retract/delete — all proxied server-side. Actions are
   attributed to the shared `service` identity (upstream limitation), surfaced
   in the UI.
-
-## [Unreleased — Phase 2]
-
-Phase 2 — WordPress account mapping (still no catalog writes).
-
-### Added
+- Server-side **publish proxy**: `PublishClient` performs the full dataset write
+  set (list/create/update/publish/retract/delete) against the Terraviz publish
+  API, attaching the stored Cloudflare Access service token in PHP so it never
+  reaches the browser. Same-origin REST proxy `terraviz/v1/publisher/datasets*`,
+  gated by capability tiers (draft tier for create/edit drafts; publish tier for
+  publish/retract/delete and for editing an already-published dataset) plus a
+  credential-configured check, with an allowlisted dataset body; the node stays
+  the authoritative validator.
+- **Asset upload** through the presigned-R2 flow: the browser hashes the file
+  (`sha256`), the plugin proxies `init` to mint a short-lived presigned `PUT`,
+  the browser uploads the bytes **directly** to storage, and the plugin proxies
+  `complete` (the node re-verifies the digest and sets the dataset's ref). The
+  service token never touches the upload; video transcodes asynchronously
+  (HTTP 202). REST `POST /publisher/datasets/:id/asset` and
+  `.../asset/:upload_id/complete`. The direct byte upload is cross-origin, so the
+  node's storage bucket must allow the WordPress site's origin (CORS).
 - Custom `manage_terraviz` capability, granted to administrators on activation
   and cleaned up on deactivation/uninstall, so a site owner can delegate
   Terraviz configuration without full `manage_options`.
-- WP-role → publish-intent mapping (`Support/Capabilities.php`), shown
-  read-only on the settings screen. This is local authorization: a future
-  publish path proxies every call under one shared Terraviz `service` identity,
-  so WordPress — not Terraviz — gates who may act through the plugin.
-- Inert, encrypted **service-token** slot in settings: a Cloudflare Access
+- WP-role → publish-intent mapping (`Support/Capabilities.php`): local
+  authorization — WordPress, not Terraviz, gates who may act through the plugin.
+- Encrypted **service-token** slot in settings: a Cloudflare Access
   `Cf-Access-Client-Id` + `Cf-Access-Client-Secret` pair. The client id is
   stored in the clear; the secret is encrypted at rest (libsodium `secretbox`,
-  OpenSSL AES-256-GCM fallback) and never returned to the browser.
-- Read-only "Verify credential" probe (`GET /api/v1/publish/me`) that validates
-  the stored token — reporting the recognised role/status — without mutating
-  any Terraviz content. No publish path exists yet.
+  OpenSSL AES-256-GCM fallback) and never returned to the browser. Read-only
+  "Verify credential" probe (`GET /api/v1/publish/me`).
 - Distributable plugin packaging: `bin/build-zip.sh` produces an installable
   `terraviz` ZIP (bundling the compiled blocks, stripping dev files via
   `.distignore`), surfaced as a downloadable CI artifact on every run and as a
@@ -90,7 +68,7 @@ Phase 2 — WordPress account mapping (still no catalog writes).
   invokes the `activate_terraviz` / `deactivate_terraviz` hook with `null`
   instead of a boolean — the lifecycle callbacks now accept a nullable flag.
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-07-06
 
 Phase 1 — the zero-credential embed plugin.
 
