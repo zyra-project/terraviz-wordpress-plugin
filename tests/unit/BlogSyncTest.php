@@ -251,6 +251,25 @@ class BlogSyncTest extends WP_UnitTestCase {
 		$this->assertSame( 'synced', get_post_meta( $post->ID, Sync::STATE_META, true ) );
 	}
 
+	public function test_do_sync_skips_password_protected_post(): void {
+		$this->configure_credential();
+		add_filter( 'pre_http_request', array( $this, 'intercept' ), 10, 3 );
+
+		$post = $this->make_post(
+			'<!-- wp:terraviz/dataset {"id":"DS_ONE"} /-->',
+			array( 'post_password' => 'secret' )
+		);
+		update_post_meta( $post->ID, Sync::OPTIN_META, true );
+
+		$this->sync_with()->do_sync( $post->ID );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept' ), 10 );
+
+		// A password-protected post is access-gated content — nothing is sent.
+		$this->assertSame( array(), $this->requests );
+		$this->assertSame( '', get_post_meta( $post->ID, Sync::ID_META, true ) );
+	}
+
 	public function test_do_unsync_unpublishes_but_keeps_id(): void {
 		$this->configure_credential();
 		add_filter( 'pre_http_request', array( $this, 'intercept' ), 10, 3 );

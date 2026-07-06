@@ -142,14 +142,16 @@ final class Sync {
 		}
 
 		$opted_in  = (bool) get_post_meta( $post_id, self::OPTIN_META, true );
-		$published = ( 'publish' === $post->post_status );
+		$published = $this->is_public( $post );
 		$has_stub  = '' !== (string) get_post_meta( $post_id, self::ID_META, true );
 		$state     = (string) get_post_meta( $post_id, self::STATE_META, true );
 
 		if ( $opted_in && $published ) {
 			$this->schedule( self::SYNC_HOOK, $post_id );
-		} elseif ( $has_stub && 'synced' === $state ) {
-			// Opted out, or no longer published — take the live stub down.
+		} elseif ( $has_stub && 'unsynced' !== $state ) {
+			// Opted out, or no longer published — take the stub down. Fire for
+			// any not-already-down stub (including a prior `error` state), so a
+			// failed publish can't leave live content up after an opt-out.
 			$this->schedule( self::UNSYNC_HOOK, $post_id );
 		}
 	}
@@ -162,7 +164,11 @@ final class Sync {
 	 */
 	public function on_delete( $post_id ): void {
 		$blog_id = (string) get_post_meta( (int) $post_id, self::ID_META, true );
-		if ( '' === $blog_id || ! Capabilities::can_publish() ) {
+		// Take the stub down for *any* deletion of a stubbed post — leaving a
+		// live stub that points at a now-404 URL is worse than the missing
+		// capability check, and the unpublish is a safe, take-down-only action
+		// (a no-op without a configured credential).
+		if ( '' === $blog_id ) {
 			return;
 		}
 		if ( ! wp_next_scheduled( self::UNSYNC_ID_HOOK, array( $blog_id ) ) ) {
@@ -182,7 +188,7 @@ final class Sync {
 			return;
 		}
 		// Re-validate: state may have changed between scheduling and running.
-		if ( 'publish' !== $post->post_status || ! (bool) get_post_meta( $post_id, self::OPTIN_META, true ) ) {
+		if ( ! $this->is_public( $post ) || ! (bool) get_post_meta( $post_id, self::OPTIN_META, true ) ) {
 			return;
 		}
 
@@ -430,6 +436,17 @@ final class Sync {
 		}
 
 		return $raw;
+	}
+
+	/**
+	 * Whether a post is publicly visible, so its content is safe to surface.
+	 * A password-protected post is `publish` but access-gated, so it is
+	 * explicitly excluded — its excerpt/body must never reach the public stub.
+	 *
+	 * @param WP_Post $post Post.
+	 */
+	private function is_public( WP_Post $post ): bool {
+		return 'publish' === $post->post_status && '' === (string) $post->post_password;
 	}
 
 	/**

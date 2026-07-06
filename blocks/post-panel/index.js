@@ -54,7 +54,7 @@ function TerravizBlogPanel() {
 				checked={ optedIn }
 				disabled={ ! boot.credentialConfigured }
 				onChange={ ( value ) =>
-					setMeta( { ...meta, [ OPTIN ]: value } )
+					setMeta( { ...( meta || {} ), [ OPTIN ]: value } )
 				}
 			/>
 
