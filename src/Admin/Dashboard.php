@@ -115,7 +115,7 @@ final class Dashboard {
 	 */
 	private function boot_data(): array {
 		return array(
-			'restRoot'             => esc_url_raw( rest_url( 'terraviz/v1/publisher' ) ),
+			'restRoot'             => esc_url_raw( untrailingslashit( rest_url( 'terraviz/v1/publisher' ) ) ),
 			'nonce'                => wp_create_nonce( 'wp_rest' ),
 			'origin'               => Options::origin(),
 			'canPublish'           => Capabilities::can_publish(),

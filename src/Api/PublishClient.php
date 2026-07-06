@@ -210,7 +210,10 @@ final class PublishClient {
 
 		if ( null !== $body ) {
 			$args['headers']['Content-Type'] = 'application/json';
-			$args['body']                    = wp_json_encode( $body );
+			// Cast to object so an empty body serialises to `{}` (a JSON object,
+			// which the publish/retract routes expect) rather than `[]`.
+			// Non-empty associative payloads and nested lists are unaffected.
+			$args['body'] = wp_json_encode( (object) $body );
 		}
 
 		/**

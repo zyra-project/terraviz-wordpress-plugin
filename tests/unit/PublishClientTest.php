@@ -254,6 +254,8 @@ class PublishClientTest extends WP_UnitTestCase {
 		$this->client()->publish_dataset( 'D1' );
 		$this->assertSame( 'POST', $this->captured_args['method'] );
 		$this->assertStringEndsWith( '/datasets/D1/publish', $this->captured_url );
+		// An empty lifecycle body must serialise to a JSON object, not `[]`.
+		$this->assertSame( '{}', $this->captured_args['body'] );
 
 		$this->client()->retract_dataset( 'D1' );
 		$this->assertStringEndsWith( '/datasets/D1/retract', $this->captured_url );
