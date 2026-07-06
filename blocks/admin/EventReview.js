@@ -16,6 +16,7 @@ import {
 	ToggleControl,
 } from '@wordpress/components';
 import { reviewEvent, normalizeError } from './api';
+import { safeHttpUrl } from './safeUrl';
 
 function initialEdits( ev ) {
 	const geo = ev.geometry || {};
@@ -140,9 +141,13 @@ export default function EventReview( { event, onReviewed, onCancel } ) {
 			</p>
 			{ event.source && event.source.url && (
 				<p>
-					<ExternalLink href={ event.source.url }>
-						{ event.source.name || event.source.url }
-					</ExternalLink>
+					{ safeHttpUrl( event.source.url ) ? (
+						<ExternalLink href={ safeHttpUrl( event.source.url ) }>
+							{ event.source.name || event.source.url }
+						</ExternalLink>
+					) : (
+						event.source.name || event.source.url
+					) }
 				</p>
 			) }
 			{ event.summary && <p>{ event.summary }</p> }
