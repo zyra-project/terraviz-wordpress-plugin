@@ -16,6 +16,12 @@
 # wp-env / local
 /.wp-env.override.json
 
+# Playwright screenshot suite — generated run artifacts (baselines under
+# tests/e2e/__snapshots__/ and listing images under .wordpress-org/ ARE tracked)
+/tests/e2e/.artifacts/
+/test-results/
+/playwright-report/
+
 # Editors / OS
 .DS_Store
 Thumbs.db

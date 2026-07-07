@@ -102,7 +102,18 @@ npm run env:start       # wp-env at http://localhost:8888
 
 # Tests
 composer run test       # PHPUnit (needs the WP test suite; see bin/install-wp-tests.sh)
+
+# Screenshots / visual regression (Playwright + wp-env; needs Docker)
+npm run screenshots         # capture block + dashboard shots, diff vs baselines
+npm run screenshots:update  # regenerate baselines + WordPress.org listing images
 ```
+
+The screenshot suite (`tests/e2e/`) drives a real WordPress with offline
+fixtures and captures every block and admin view — producing a gallery
+artifact, committed visual-regression baselines, and the numbered
+`.wordpress-org/screenshot-N.png` images for the WordPress.org listing. It runs
+in CI as the [`Screenshots`](.github/workflows/screenshots.yml) workflow (kept
+out of the core gate). See [`tests/e2e/README.md`](tests/e2e/README.md).
 
 Requires WordPress ≥ 6.1 and PHP ≥ 7.4. Licensed GPLv2-or-later.
 

@@ -13,6 +13,14 @@
 	<exclude-pattern>src/Contract/CatalogResponse.php</exclude-pattern>
 	<exclude-pattern>src/Contract/WellKnownDoc.php</exclude-pattern>
 
+	<!--
+		The E2E screenshot harness (Playwright + wp-env fixtures) is dev-only
+		scaffolding that never ships, and its fixture mu-plugin deliberately
+		serves raw SVG and short-circuits the HTTP API — patterns the runtime
+		sniffs would flag. It is not part of the plugin surface, so scope it out.
+	-->
+	<exclude-pattern>tests/e2e/*</exclude-pattern>
+
 	<exclude-pattern>*/vendor/*</exclude-pattern>
 	<exclude-pattern>*/node_modules/*</exclude-pattern>
 	<exclude-pattern>*/build/*</exclude-pattern>

@@ -1,0 +1,24 @@
+{
+	"datasets": [
+		{
+			"id": "global-precip",
+			"title": "Global Precipitation Rate",
+			"abstract_snippet": "Half-hourly precipitation from the IMERG multi-satellite product."
+		},
+		{
+			"id": "sea-ice-extent",
+			"title": "Arctic Sea Ice Extent",
+			"abstract_snippet": "Daily Arctic sea-ice concentration from passive-microwave sensors."
+		},
+		{
+			"id": "night-lights",
+			"title": "Earth at Night",
+			"abstract_snippet": "Artificial light at night from the VIIRS Day/Night Band."
+		},
+		{
+			"id": "coral-tour",
+			"title": "Coral Reefs of the World — Guided Tour",
+			"abstract_snippet": "A narrated tour of the planet's major coral-reef systems."
+		}
+	]
+}

@@ -1,0 +1,126 @@
+name: Screenshots
+
+# Capture screenshots of every block (front end) and the wp-admin dashboard
+# views by driving a real WordPress (wp-env) with Playwright. Two products:
+#
+#   - a downloadable gallery artifact ("here's how everything looks");
+#   - visual-regression: `toHaveScreenshot` diffs each shot against a committed
+#     baseline (tests/e2e/__snapshots__/) and fails on an unexpected change.
+#
+# A subset is also written with the canonical WordPress.org listing names
+# (.wordpress-org/screenshot-N.png), ready for a future WP.org SVN asset deploy.
+#
+# Kept OUT of the core ci.yml gate (its own workflow) so a screenshot flake
+# never blocks a merge. Bootstrap / refresh baselines by running this manually
+# with `update_baselines = true` (commits the new baselines + listing images
+# back to the branch).
+
+on:
+  workflow_dispatch:
+    inputs:
+      update_baselines:
+        description: 'Regenerate and commit visual-regression baselines + WordPress.org listing images'
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - 'blocks/**'
+      - 'src/**'
+      - 'assets/**'
+      - 'tests/e2e/**'
+      - 'playwright.config.js'
+      - '.github/workflows/screenshots.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    name: Capture block & dashboard screenshots
+    runs-on: ubuntu-latest
+    # Only elevated to write when refreshing baselines (a push back to the branch).
+    permissions:
+      contents: ${{ github.event.inputs.update_baselines == 'true' && 'write' || 'read' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Check out the PR head branch so a baseline refresh can push to it.
+          ref: ${{ github.head_ref || github.ref_name }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # The PHP blocks register from build/; the dashboard app is built here too.
+      - run: npm run build
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Enable offline E2E fixtures for wp-env
+        run: |
+          cat > .wp-env.override.json <<'JSON'
+          {
+            "mappings": {
+              "wp-content/mu-plugins": "./tests/e2e/mu-plugins"
+            },
+            "config": {
+              "TERRAVIZ_E2E": true
+            }
+          }
+          JSON
+
+      - name: Start WordPress (wp-env)
+        run: npx wp-env start --update
+
+      - name: Capture screenshots
+        run: |
+          if [ "${{ github.event.inputs.update_baselines }}" = "true" ]; then
+            npm run screenshots:update
+          else
+            npm run screenshots
+          fi
+
+      - name: Upload screenshot gallery
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-gallery
+          path: |
+            tests/e2e/.artifacts/gallery/**
+            .wordpress-org/screenshot-*.png
+          if-no-files-found: warn
+
+      - name: Upload Playwright report (diffs on failure)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: tests/e2e/.artifacts/report/**
+          if-no-files-found: warn
+
+      - name: Commit refreshed baselines & listing images
+        if: ${{ github.event.inputs.update_baselines == 'true' }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add tests/e2e/__snapshots__ .wordpress-org
+          if git diff --cached --quiet; then
+            echo 'No screenshot changes to commit.'
+          else
+            git commit -s \
+              -m 'ci: refresh screenshot baselines and WordPress.org listing images' \
+              -m 'Co-Authored-By: Claude <noreply@anthropic.com>'
+            git push origin HEAD:${{ github.head_ref || github.ref_name }}
+          fi
+
+      - name: Stop WordPress (wp-env)
+        if: always()
+        run: npx wp-env stop

@@ -1,0 +1,64 @@
+{
+	"schema_version": "1.0.0",
+	"generated_at": "2026-01-01T00:00:00Z",
+	"etag": "e2e-fixture-catalog-v1",
+	"cursor": null,
+	"tombstones": [],
+	"datasets": [
+		{
+			"id": "sea-surface-temp",
+			"slug": "sea-surface-temp",
+			"legacyId": "sst",
+			"title": "Sea Surface Temperature",
+			"format": "dataset/json",
+			"abstractTxt": "Daily global sea-surface temperature anomalies, blended from satellite and in-situ observations. Warm and cool departures from the 1991–2020 climatology reveal El Niño and marine heatwave signatures.",
+			"thumbnailLink": "{{SITE}}/?terraviz_e2e_thumb=sea-surface-temp&w=640&h=360&c=e05a3a",
+			"tags": [ "ocean", "temperature", "climate", "satellite" ],
+			"isHidden": false
+		},
+		{
+			"id": "global-precip",
+			"slug": "global-precipitation",
+			"legacyId": "precip",
+			"title": "Global Precipitation Rate",
+			"format": "dataset/json",
+			"abstractTxt": "Half-hourly precipitation estimates from the multi-satellite IMERG product, showing storms, monsoons, and atmospheric rivers moving across the planet in near real time.",
+			"thumbnailLink": "{{SITE}}/?terraviz_e2e_thumb=global-precip&w=640&h=360&c=2f6fb0",
+			"tags": [ "atmosphere", "precipitation", "weather" ],
+			"isHidden": false
+		},
+		{
+			"id": "sea-ice-extent",
+			"slug": "sea-ice-extent",
+			"legacyId": "ice",
+			"title": "Arctic Sea Ice Extent",
+			"format": "dataset/json",
+			"abstractTxt": "Daily sea-ice concentration in the Arctic basin from passive-microwave sensors, tracing the seasonal advance and retreat of the ice edge and the long-term decline in summer minimums.",
+			"thumbnailLink": "{{SITE}}/?terraviz_e2e_thumb=sea-ice-extent&w=640&h=360&c=3a9d8f",
+			"tags": [ "cryosphere", "arctic", "ice", "climate" ],
+			"isHidden": false
+		},
+		{
+			"id": "night-lights",
+			"slug": "night-lights",
+			"legacyId": "viirs-dnb",
+			"title": "Earth at Night",
+			"format": "dataset/json",
+			"abstractTxt": "The global distribution of artificial light at night from the VIIRS Day/Night Band, a proxy for human settlement, energy use, and economic activity.",
+			"thumbnailLink": "{{SITE}}/?terraviz_e2e_thumb=night-lights&w=640&h=360&c=c8922b",
+			"tags": [ "human", "energy", "night" ],
+			"isHidden": false
+		},
+		{
+			"id": "coral-tour",
+			"slug": "coral-reefs-tour",
+			"legacyId": "coral",
+			"title": "Coral Reefs of the World — Guided Tour",
+			"format": "tour/json",
+			"abstractTxt": "A narrated tour visiting the planet's major coral-reef systems, layering sea-surface temperature and bleaching-alert data to explain where reefs are under stress.",
+			"thumbnailLink": "{{SITE}}/?terraviz_e2e_thumb=coral-tour&w=640&h=360&c=b5477e",
+			"tags": [ "ocean", "coral", "tour", "biodiversity" ],
+			"isHidden": false
+		}
+	]
+}
