@@ -2,10 +2,12 @@
  * Terraviz embed — progressive enhancement.
  *
  * Replaces each server-rendered poster with the live globe iframe. Globes are
- * heavy, so we never boot them all on page load:
+ * heavy, so by default we never boot them all on page load:
  *   - mode="poster": load only when the visitor clicks "Load interactive globe".
  *   - mode="lazy":   load when the block scrolls into view (IntersectionObserver),
  *                    with the button as a keyboard/no-IO fallback.
+ *   - mode="eager":  load immediately on page load (the "Load as soon as the
+ *                    page loads" posture).
  *
  * No dependencies, no outbound calls — the iframe src is a Terraviz origin
  * composed entirely server-side.
@@ -169,7 +171,10 @@
 			} );
 		}
 
-		if ( mode === 'lazy' ) {
+		if ( mode === 'eager' ) {
+			// Load as soon as the page loads, no scroll or click required.
+			load( media );
+		} else if ( mode === 'lazy' ) {
 			if ( 'IntersectionObserver' in window ) {
 				var io = new IntersectionObserver(
 					function ( entries, obs ) {

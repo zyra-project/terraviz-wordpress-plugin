@@ -172,6 +172,7 @@ final class Renderer {
 			'category'     => isset( $atts['category'] ) ? sanitize_text_field( (string) $atts['category'] ) : '',
 			'aspectRatio'  => isset( $atts['aspectRatio'] ) ? Options::sanitize_aspect_ratio( (string) $atts['aspectRatio'] ) : (string) Options::get( 'aspect_ratio', '16:9' ),
 			'poster'       => $this->flag( $atts, 'poster', (bool) Options::get( 'lazy_poster', true ) ),
+			'telemetry'    => $this->telemetry_posture( $atts ),
 			'interactive'  => $this->flag( $atts, 'interactive', true ),
 			'heading'      => $this->heading_tag( isset( $atts['heading'] ) ? (string) $atts['heading'] : 'h3' ),
 			'showTitle'    => $this->flag( $atts, 'showTitle', true ),
@@ -486,7 +487,11 @@ final class Renderer {
 	 * @param string              $thumb     Thumbnail URL or ''.
 	 */
 	private function media_html( array $atts, string $embed_url, string $title, string $thumb ): string {
-		$mode  = $atts['poster'] ? 'poster' : 'lazy';
+		// Poster on = click-to-load (the visitor must click before the globe
+		// boots). With the poster off the globe auto-loads, and the telemetry
+		// posture decides when: 'lazy' waits until it scrolls into view,
+		// 'eager' boots it as soon as the page loads.
+		$mode  = $atts['poster'] ? 'poster' : (string) $atts['telemetry'];
 		$ratio = $this->aspect_css( (string) $atts['aspectRatio'] );
 
 		/* translators: %s: dataset or tour title. */
@@ -803,6 +808,24 @@ final class Renderer {
 		}
 
 		return (bool) $value;
+	}
+
+	/**
+	 * Resolve the telemetry / load-posture ('eager' or 'lazy') for this embed.
+	 *
+	 * A per-block/shortcode `telemetry` attribute wins when it names a known
+	 * posture; otherwise the site-wide setting applies. Any unrecognised value
+	 * falls back to the consent-friendly 'lazy'. This only governs auto-load
+	 * timing — it is moot when the click-to-load poster is on.
+	 *
+	 * @param array<string,mixed> $atts Attributes.
+	 */
+	private function telemetry_posture( array $atts ): string {
+		$value = array_key_exists( 'telemetry', $atts )
+			? (string) $atts['telemetry']
+			: (string) Options::get( 'telemetry', 'lazy' );
+
+		return 'eager' === $value ? 'eager' : 'lazy';
 	}
 
 	/**

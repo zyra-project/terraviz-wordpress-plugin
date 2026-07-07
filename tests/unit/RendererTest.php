@@ -194,6 +194,47 @@ class RendererTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'video.zyra-project.org/x/thumbnail.jpg', $html );
 	}
 
+	public function test_eager_telemetry_boots_on_page_load(): void {
+		$renderer = $this->renderer_with(
+			array( '/api/v1/datasets/INTERNAL_SOS_768' => $this->dataset_payload() )
+		);
+
+		// With the poster off, the 'eager' posture must reach the frontend as
+		// its own mode so the globe boots on page load rather than waiting for
+		// the block to scroll into view.
+		$html = $renderer->render(
+			array(
+				'type'      => 'dataset',
+				'id'        => 'INTERNAL_SOS_768',
+				'poster'    => false,
+				'telemetry' => 'eager',
+			)
+		);
+
+		$this->assertStringContainsString( 'data-terraviz-mode="eager"', $html );
+		$this->assertStringContainsString( 'data-terraviz-src=', $html );
+	}
+
+	public function test_poster_wins_over_eager_telemetry(): void {
+		$renderer = $this->renderer_with(
+			array( '/api/v1/datasets/INTERNAL_SOS_768' => $this->dataset_payload() )
+		);
+
+		// Click-to-load is the stronger consent gate: an explicit poster must
+		// keep the click-to-load posture even when telemetry asks to load eagerly.
+		$html = $renderer->render(
+			array(
+				'type'      => 'dataset',
+				'id'        => 'INTERNAL_SOS_768',
+				'poster'    => true,
+				'telemetry' => 'eager',
+			)
+		);
+
+		$this->assertStringContainsString( 'data-terraviz-mode="poster"', $html );
+		$this->assertStringNotContainsString( 'data-terraviz-mode="eager"', $html );
+	}
+
 	public function test_non_interactive_dataset_omits_the_globe_hook(): void {
 		$renderer = $this->renderer_with(
 			array( '/api/v1/datasets/INTERNAL_SOS_768' => $this->dataset_payload() )
