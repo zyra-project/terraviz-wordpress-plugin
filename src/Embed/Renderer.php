@@ -500,12 +500,27 @@ final class Renderer {
 			);
 		}
 
-		$button = sprintf(
-			'<button type="button" class="terraviz-embed__load" aria-label="%1$s">%2$s<span class="terraviz-embed__play" aria-hidden="true"></span><span class="terraviz-embed__hint">%3$s</span></button>',
-			esc_attr( $load_label ),
-			$thumb_html,
-			esc_html__( 'Load interactive globe', 'terraviz' )
-		);
+		if ( 'poster' === $mode ) {
+			// Click-to-load: a prominent poster with a play affordance and a
+			// visible hint. The visitor must click before the globe boots.
+			$button = sprintf(
+				'<button type="button" class="terraviz-embed__load" aria-label="%1$s">%2$s<span class="terraviz-embed__play" aria-hidden="true"></span><span class="terraviz-embed__hint">%3$s</span></button>',
+				esc_attr( $load_label ),
+				$thumb_html,
+				esc_html__( 'Load interactive globe', 'terraviz' )
+			);
+		} else {
+			// Poster off (lazy auto-load): a quiet thumbnail placeholder the
+			// frontend swaps for the globe when it scrolls into view. No
+			// click-to-load poster is shown — the button is kept only as a
+			// keyboard / no-IntersectionObserver fallback (its aria-label still
+			// describes the action).
+			$button = sprintf(
+				'<button type="button" class="terraviz-embed__load terraviz-embed__load--auto" aria-label="%1$s">%2$s</button>',
+				esc_attr( $load_label ),
+				$thumb_html
+			);
+		}
 
 		/* translators: %s: dataset or tour title. */
 		$iframe_title = sprintf( __( 'Interactive Terraviz globe: %s', 'terraviz' ), $title );

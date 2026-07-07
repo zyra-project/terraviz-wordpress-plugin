@@ -145,6 +145,52 @@ class RendererTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'catalog=true', $html );
 	}
 
+	public function test_poster_on_renders_the_click_to_load_poster(): void {
+		$renderer = $this->renderer_with(
+			array( '/api/v1/datasets/INTERNAL_SOS_768' => $this->dataset_payload() )
+		);
+
+		$html = $renderer->render(
+			array(
+				'type'   => 'dataset',
+				'id'     => 'INTERNAL_SOS_768',
+				'poster' => true,
+			)
+		);
+
+		// The click-to-load poster: poster mode, the play affordance, and the
+		// visible "Load interactive globe" hint.
+		$this->assertStringContainsString( 'data-terraviz-mode="poster"', $html );
+		$this->assertStringContainsString( 'terraviz-embed__play', $html );
+		$this->assertStringContainsString( 'Load interactive globe', $html );
+	}
+
+	public function test_poster_off_suppresses_the_click_to_load_poster(): void {
+		$renderer = $this->renderer_with(
+			array( '/api/v1/datasets/INTERNAL_SOS_768' => $this->dataset_payload() )
+		);
+
+		$html = $renderer->render(
+			array(
+				'type'   => 'dataset',
+				'id'     => 'INTERNAL_SOS_768',
+				'poster' => false,
+			)
+		);
+
+		// Turning the poster off must actually remove the click-to-load poster:
+		// no play affordance, no "Load interactive globe" hint. The mode flips to
+		// lazy auto-load and the thumbnail becomes a passive placeholder.
+		$this->assertStringContainsString( 'data-terraviz-mode="lazy"', $html );
+		$this->assertStringNotContainsString( 'terraviz-embed__play', $html );
+		$this->assertStringNotContainsString( 'Load interactive globe', $html );
+		$this->assertStringContainsString( 'terraviz-embed__load--auto', $html );
+		// It still progressively enhances to the globe (deferred iframe hook)…
+		$this->assertStringContainsString( 'data-terraviz-src=', $html );
+		// …behind the thumbnail placeholder.
+		$this->assertStringContainsString( 'video.zyra-project.org/x/thumbnail.jpg', $html );
+	}
+
 	public function test_non_interactive_dataset_omits_the_globe_hook(): void {
 		$renderer = $this->renderer_with(
 			array( '/api/v1/datasets/INTERNAL_SOS_768' => $this->dataset_payload() )

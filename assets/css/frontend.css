@@ -180,6 +180,20 @@
 	outline-offset: -3px;
 }
 
+/* Poster off (auto-load): the thumbnail is a passive placeholder the globe
+ * replaces on scroll, not a click-to-load call to action. Drop the darkening
+ * overlay and the pointer cursor; the ▶/hint markup isn't emitted at all. The
+ * button stays focusable as a keyboard / no-IntersectionObserver fallback. */
+.terraviz-embed__load--auto {
+	cursor: default;
+}
+
+.terraviz-embed__load--auto .terraviz-embed__thumb,
+.terraviz-embed__load--auto:hover .terraviz-embed__thumb,
+.terraviz-embed__load--auto:focus-visible .terraviz-embed__thumb {
+	filter: none;
+}
+
 .terraviz-embed__body {
 	margin-top: 0.75em;
 }
