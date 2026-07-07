@@ -159,10 +159,11 @@ class RendererTest extends WP_UnitTestCase {
 		);
 
 		// The click-to-load poster: poster mode, the play affordance, and the
-		// visible "Load interactive globe" hint.
+		// visible hint. Assert on the stable markup classes, not the
+		// translatable hint text, so the test is locale-agnostic.
 		$this->assertStringContainsString( 'data-terraviz-mode="poster"', $html );
 		$this->assertStringContainsString( 'terraviz-embed__play', $html );
-		$this->assertStringContainsString( 'Load interactive globe', $html );
+		$this->assertStringContainsString( 'terraviz-embed__hint', $html );
 	}
 
 	public function test_poster_off_suppresses_the_click_to_load_poster(): void {
@@ -179,11 +180,13 @@ class RendererTest extends WP_UnitTestCase {
 		);
 
 		// Turning the poster off must actually remove the click-to-load poster:
-		// no play affordance, no "Load interactive globe" hint. The mode flips to
-		// lazy auto-load and the thumbnail becomes a passive placeholder.
+		// no play affordance, no hint element. The mode flips to lazy auto-load
+		// and the thumbnail becomes a passive placeholder. Assert on the stable
+		// markup classes, not the translatable hint text, to stay
+		// locale-agnostic.
 		$this->assertStringContainsString( 'data-terraviz-mode="lazy"', $html );
 		$this->assertStringNotContainsString( 'terraviz-embed__play', $html );
-		$this->assertStringNotContainsString( 'Load interactive globe', $html );
+		$this->assertStringNotContainsString( 'terraviz-embed__hint', $html );
 		$this->assertStringContainsString( 'terraviz-embed__load--auto', $html );
 		// It still progressively enhances to the globe (deferred iframe hook)…
 		$this->assertStringContainsString( 'data-terraviz-src=', $html );
