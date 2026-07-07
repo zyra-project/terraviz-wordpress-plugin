@@ -90,16 +90,47 @@ function terraviz_e2e_dataset_index() {
  * @return array<string,mixed>
  */
 function terraviz_e2e_response( $body, $code = 200 ) {
+	$messages = array(
+		200 => 'OK',
+		404 => 'Not Found',
+		500 => 'Internal Server Error',
+	);
+
 	return array(
 		'headers'  => array( 'content-type' => 'application/json' ),
 		'body'     => $body,
 		'response' => array(
 			'code'    => $code,
-			'message' => 200 === $code ? 'OK' : 'Not Found',
+			'message' => isset( $messages[ $code ] ) ? $messages[ $code ] : 'Error',
 		),
 		'cookies'  => array(),
 		'filename' => null,
 	);
+}
+
+/**
+ * Serve a whole-file fixture as a response, failing loudly (500 + JSON error)
+ * when the fixture file is missing or unreadable rather than returning an
+ * empty 200 body that decodes to nothing and breaks confusingly downstream.
+ *
+ * @param string $name Fixture basename without extension.
+ * @return array<string,mixed>
+ */
+function terraviz_e2e_fixture_response( $name ) {
+	$body = terraviz_e2e_fixture( $name );
+	if ( null === $body ) {
+		return terraviz_e2e_response(
+			(string) wp_json_encode(
+				array(
+					'error'   => 'fixture_missing',
+					'fixture' => $name,
+				)
+			),
+			500
+		);
+	}
+
+	return terraviz_e2e_response( $body );
 }
 
 /**
@@ -117,17 +148,17 @@ function terraviz_e2e_intercept( $preempt, $args, $url ) {
 
 	// Full catalog envelope.
 	if ( '/api/v1/catalog' === $path ) {
-		return terraviz_e2e_response( (string) terraviz_e2e_fixture( 'catalog' ) );
+		return terraviz_e2e_fixture_response( 'catalog' );
 	}
 
 	// Curated "right now" hero.
 	if ( '/api/v1/featured-hero' === $path ) {
-		return terraviz_e2e_response( (string) terraviz_e2e_fixture( 'featured-hero' ) );
+		return terraviz_e2e_fixture_response( 'featured-hero' );
 	}
 
 	// "More like this" rail for a dataset.
 	if ( preg_match( '#^/api/v1/datasets/([^/]+)/related$#', $path ) ) {
-		return terraviz_e2e_response( (string) terraviz_e2e_fixture( 'related' ) );
+		return terraviz_e2e_fixture_response( 'related' );
 	}
 
 	// A single dataset (also used to resolve tours and the hero body).

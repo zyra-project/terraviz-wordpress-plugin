@@ -38,7 +38,10 @@ async function snap( locator, name, expect, opts = {} ) {
 	}
 
 	// The visual-regression gate. On the first run (or `--update-snapshots`)
-	// this writes the baseline; thereafter it diffs against it.
+	// this writes the baseline; thereafter it diffs against it. Playwright's
+	// `{arg}` token is the name WITHOUT extension, so `${name}.png` with the
+	// `{arg}{ext}` template resolves to `<name>.png` (single extension), exactly
+	// as with Playwright's own default template.
 	await expect( locator ).toHaveScreenshot( `${ name }.png` );
 }
 

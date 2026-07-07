@@ -1,5 +1,7 @@
 {
-	"id": "sea-surface-temp",
-	"title": "Sea Surface Temperature",
-	"reason": "Featured right now"
+	"hero": {
+		"id": "sea-surface-temp",
+		"title": "Sea Surface Temperature",
+		"reason": "Featured right now"
+	}
 }
