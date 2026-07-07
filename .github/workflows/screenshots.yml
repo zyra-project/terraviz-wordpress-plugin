@@ -42,9 +42,12 @@ jobs:
   screenshots:
     name: Capture block & dashboard screenshots
     runs-on: ubuntu-latest
-    # Only elevated to write when refreshing baselines (a push back to the branch).
+    # `permissions` cannot use expressions, so it is static. `contents: write` is
+    # only ever *exercised* by the dispatch-only "commit refreshed baselines"
+    # step (guarded by inputs.update_baselines); on pull_request runs nothing
+    # writes, and GitHub issues a read-only token for fork PRs regardless.
     permissions:
-      contents: ${{ github.event.inputs.update_baselines == 'true' && 'write' || 'read' }}
+      contents: write
     steps:
       # Use checkout's default ref: the PR merge ref for pull_request (works for
       # forks, where head_ref doesn't exist in this repo), and the selected
