@@ -12,7 +12,7 @@
 			"title": "Sea Surface Temperature",
 			"format": "dataset/json",
 			"abstractTxt": "Daily global sea-surface temperature anomalies, blended from satellite and in-situ observations. Warm and cool departures from the 1991–2020 climatology reveal El Niño and marine heatwave signatures.",
-			"thumbnailLink": "{{SITE}}/?terraviz_e2e_thumb=sea-surface-temp&w=640&h=360&c=e05a3a",
+			"thumbnailLink": "{{SITE}}/?terraviz_e2e_thumb=sea-surface-temp",
 			"tags": [ "ocean", "temperature", "climate", "satellite" ],
 			"isHidden": false
 		},
@@ -23,7 +23,7 @@
 			"title": "Global Precipitation Rate",
 			"format": "dataset/json",
 			"abstractTxt": "Half-hourly precipitation estimates from the multi-satellite IMERG product, showing storms, monsoons, and atmospheric rivers moving across the planet in near real time.",
-			"thumbnailLink": "{{SITE}}/?terraviz_e2e_thumb=global-precip&w=640&h=360&c=2f6fb0",
+			"thumbnailLink": "{{SITE}}/?terraviz_e2e_thumb=global-precip",
 			"tags": [ "atmosphere", "precipitation", "weather" ],
 			"isHidden": false
 		},
@@ -34,7 +34,7 @@
 			"title": "Arctic Sea Ice Extent",
 			"format": "dataset/json",
 			"abstractTxt": "Daily sea-ice concentration in the Arctic basin from passive-microwave sensors, tracing the seasonal advance and retreat of the ice edge and the long-term decline in summer minimums.",
-			"thumbnailLink": "{{SITE}}/?terraviz_e2e_thumb=sea-ice-extent&w=640&h=360&c=3a9d8f",
+			"thumbnailLink": "{{SITE}}/?terraviz_e2e_thumb=sea-ice-extent",
 			"tags": [ "cryosphere", "arctic", "ice", "climate" ],
 			"isHidden": false
 		},
@@ -45,7 +45,7 @@
 			"title": "Earth at Night",
 			"format": "dataset/json",
 			"abstractTxt": "The global distribution of artificial light at night from the VIIRS Day/Night Band, a proxy for human settlement, energy use, and economic activity.",
-			"thumbnailLink": "{{SITE}}/?terraviz_e2e_thumb=night-lights&w=640&h=360&c=c8922b",
+			"thumbnailLink": "{{SITE}}/?terraviz_e2e_thumb=night-lights",
 			"tags": [ "human", "energy", "night" ],
 			"isHidden": false
 		},
@@ -56,7 +56,7 @@
 			"title": "Coral Reefs of the World — Guided Tour",
 			"format": "tour/json",
 			"abstractTxt": "A narrated tour visiting the planet's major coral-reef systems, layering sea-surface temperature and bleaching-alert data to explain where reefs are under stress.",
-			"thumbnailLink": "{{SITE}}/?terraviz_e2e_thumb=coral-tour&w=640&h=360&c=b5477e",
+			"thumbnailLink": "{{SITE}}/?terraviz_e2e_thumb=coral-tour",
 			"tags": [ "ocean", "coral", "tour", "biodiversity" ],
 			"isHidden": false
 		}

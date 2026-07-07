@@ -46,10 +46,10 @@ jobs:
     permissions:
       contents: ${{ github.event.inputs.update_baselines == 'true' && 'write' || 'read' }}
     steps:
+      # Use checkout's default ref: the PR merge ref for pull_request (works for
+      # forks, where head_ref doesn't exist in this repo), and the selected
+      # branch for workflow_dispatch (so a baseline refresh can push to it).
       - uses: actions/checkout@v4
-        with:
-          # Check out the PR head branch so a baseline refresh can push to it.
-          ref: ${{ github.head_ref || github.ref_name }}
 
       - uses: actions/setup-node@v4
         with:

@@ -158,17 +158,30 @@ add_filter( 'pre_http_request', 'terraviz_e2e_intercept', 10, 3 );
  * offline artwork instead of broken cross-origin images.
  */
 function terraviz_e2e_serve_thumb() {
-	if ( ! isset( $_GET['terraviz_e2e_thumb'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only public placeholder image, no state change.
+	if ( ! isset( $_GET['terraviz_e2e_thumb'] ) ) {
 		return;
 	}
 
-	$label = sanitize_text_field( wp_unslash( (string) $_GET['terraviz_e2e_thumb'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-	$width = isset( $_GET['w'] ) ? max( 16, min( 2048, (int) $_GET['w'] ) ) : 640; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-	$height = isset( $_GET['h'] ) ? max( 16, min( 2048, (int) $_GET['h'] ) ) : 360; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-	$raw_c = isset( $_GET['c'] ) ? (string) $_GET['c'] : '2f6fb0'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-	$color = preg_match( '/^[0-9a-fA-F]{6}$/', $raw_c ) ? $raw_c : '2f6fb0';
+	// The requested key only *selects* a hardcoded preset — no value from the
+	// request is ever echoed, so there is no reflected-output / XSS surface
+	// (an unknown key falls back to a neutral preset, never to the raw input).
+	// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	$key = sanitize_key( wp_unslash( (string) $_GET['terraviz_e2e_thumb'] ) );
 
-	$title = str_replace( '-', ' ', $label );
+	$presets = array(
+		'sea-surface-temp' => array( 'Sea Surface Temperature', 'e05a3a' ),
+		'global-precip'    => array( 'Global Precipitation', '2f6fb0' ),
+		'sea-ice-extent'   => array( 'Arctic Sea Ice', '3a9d8f' ),
+		'night-lights'     => array( 'Earth at Night', 'c8922b' ),
+		'coral-tour'       => array( 'Coral Reefs Tour', 'b5477e' ),
+	);
+	$preset = isset( $presets[ $key ] ) ? $presets[ $key ] : array( 'Terraviz Dataset', '2f6fb0' );
+
+	$title  = $preset[0];
+	$color  = $preset[1];
+	$width  = 640;
+	$height = 360;
 
 	$svg = sprintf(
 		'<svg xmlns="http://www.w3.org/2000/svg" width="%1$d" height="%2$d" viewBox="0 0 %1$d %2$d" role="img" aria-label="%3$s">'
@@ -178,21 +191,22 @@ function terraviz_e2e_serve_thumb() {
 			. '<rect width="%1$d" height="%2$d" fill="url(#g)"/>'
 			. '<circle cx="%5$d" cy="%6$d" r="%7$d" fill="#ffffff" opacity="0.10"/>'
 			. '<text x="50%%" y="50%%" fill="#ffffff" font-family="Georgia,\'Times New Roman\',serif" '
-			. 'font-size="%8$d" text-anchor="middle" dominant-baseline="middle" opacity="0.95">%3$s</text>'
+			. 'font-size="%8$d" text-anchor="middle" dominant-baseline="middle" opacity="0.95">%9$s</text>'
 			. '</svg>',
 		$width,
 		$height,
-		esc_html( ucwords( $title ) ),
+		esc_attr( $title ),
 		$color,
 		(int) ( $width * 0.78 ),
 		(int) ( $height * 0.30 ),
 		(int) ( $height * 0.55 ),
-		max( 14, (int) ( $height / 9 ) )
+		max( 14, (int) ( $height / 9 ) ),
+		esc_html( $title )
 	);
 
 	header( 'Content-Type: image/svg+xml' );
 	header( 'Cache-Control: public, max-age=3600' );
-	echo $svg; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- SVG is built from sanitized parts above.
+	echo $svg; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- SVG assembled from hardcoded presets; no request data reaches output.
 	exit;
 }
 add_action( 'init', 'terraviz_e2e_serve_thumb' );

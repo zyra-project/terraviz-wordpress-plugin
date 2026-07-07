@@ -39,11 +39,12 @@ const PAGES = [
  * @return {Object} manifest keyed by page `key`.
  */
 function seedPages() {
-	// The page spec is base64-encoded (alphanumeric, brace-free) so it survives
-	// every shell/PHP/JSON quoting layer. The PHP itself uses alternative
-	// (brace-free) syntax so the ONLY `{`/`}` anywhere in the command's stdout
-	// belong to the JSON manifest we echo — which lets us extract it reliably
-	// even when wp-env prefixes its own status lines.
+	// The page spec is base64-encoded so it survives every shell/PHP/JSON
+	// quoting layer. What matters here is that base64's alphabet (A–Z, a–z,
+	// 0–9, +, /, =) contains no braces, and the PHP itself uses alternative
+	// (brace-free) syntax — so the ONLY `{`/`}` anywhere in the command's
+	// stdout belong to the JSON manifest we echo, which lets us extract it
+	// reliably even when wp-env prefixes its own status lines.
 	const b64 = Buffer.from( JSON.stringify( PAGES ) ).toString( 'base64' );
 	const php = [
 		"$pages = json_decode( base64_decode( '" + b64 + "' ), true );",
@@ -86,6 +87,14 @@ async function saveAdminState( statePath ) {
 		await page.fill( '#user_pass', ADMIN_PASS );
 		await page.click( '#wp-submit' );
 		await page.waitForSelector( '#wpadminbar, #login_error', { timeout: 30000 } );
+
+		// Fail loudly on a bad login rather than saving an unauthenticated
+		// state that makes the admin screenshots fail in a confusing way later.
+		if ( await page.locator( '#login_error' ).count() ) {
+			const detail = ( await page.locator( '#login_error' ).innerText() ).trim();
+			throw new Error( `wp-admin login failed for "${ ADMIN_USER }": ${ detail }` );
+		}
+
 		await page.context().storageState( { path: statePath } );
 	} finally {
 		await browser.close();
