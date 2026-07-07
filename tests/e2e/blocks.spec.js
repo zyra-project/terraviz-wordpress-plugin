@@ -17,13 +17,13 @@ const manifest = JSON.parse(
 	fs.readFileSync( path.join( __dirname, '.artifacts', 'pages.json' ), 'utf8' )
 );
 
-// The hero renders exactly like a dataset embed (`--dataset` class), just from
-// the featured-hero id.
+// The hero renders like a dataset embed but keeps its own `--hero` type class
+// (render_hero() delegates to render_dataset() without changing $atts['type']).
 const CASES = [
 	{ key: 'dataset', selector: '.terraviz-embed--dataset', wporg: 1 },
 	{ key: 'tour', selector: '.terraviz-embed--tour', wporg: 2 },
 	{ key: 'catalog', selector: '.terraviz-embed--catalog', wporg: 3 },
-	{ key: 'hero', selector: '.terraviz-embed--dataset', wporg: 4 },
+	{ key: 'hero', selector: '.terraviz-embed--hero', wporg: 4 },
 	{ key: 'related', selector: '.terraviz-embed--related', wporg: 5 },
 ];
 
