@@ -99,6 +99,8 @@ jobs:
           path: |
             tests/e2e/.artifacts/gallery/**
             .wordpress-org/screenshot-*.png
+          # The output dirs are dot-prefixed; include them explicitly.
+          include-hidden-files: true
           if-no-files-found: warn
 
       - name: Upload Playwright report (diffs on failure)
@@ -107,6 +109,7 @@ jobs:
         with:
           name: playwright-report
           path: tests/e2e/.artifacts/report/**
+          include-hidden-files: true
           if-no-files-found: warn
 
       - name: Commit refreshed baselines & listing images
