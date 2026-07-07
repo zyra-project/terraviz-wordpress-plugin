@@ -28,7 +28,10 @@
 		"packages-update": "wp-scripts packages-update",
 		"env": "wp-env",
 		"env:start": "wp-env start",
-		"env:stop": "wp-env stop"
+		"env:stop": "wp-env stop",
+		"test:e2e": "playwright test",
+		"screenshots": "playwright test",
+		"screenshots:update": "playwright test --update-snapshots"
 	},
 	"devDependencies": {
 		"@wordpress/env": "^10.0.0",

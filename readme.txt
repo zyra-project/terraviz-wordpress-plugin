@@ -103,6 +103,16 @@ The `dataset` and `tour` attributes accept a human-readable **slug** (e.g. `hurr
 
 Attributes: `dataset`, `tour`, `catalog`, `hero`, `related`, `origin`, `terrain`, `labels`, `borders`, `rotate`, `chat`, `layout` (1|2|4), `aspect` (e.g. `16:9`), `poster`, `interactive`, `heading` (h2–h6), `show_title`, `show_abstract`.
 
+== Screenshots ==
+
+1. The Dataset block: a live, indexable embed with a click-to-load globe poster over the server-rendered title, abstract, tags, and canonical link.
+2. The Tour block embedding a guided Terraviz tour.
+3. The Catalog block: a crawlable grid of every dataset on the configured node.
+4. The Hero block surfacing the node's featured "right now" dataset.
+5. The Related block: a "more like this" rail of related datasets.
+6. The Publisher dashboard in wp-admin for creating, editing, and publishing datasets.
+7. The plugin settings screen: node origin, default embed options, and connection test.
+
 == Changelog ==
 
 = 0.4.0 =

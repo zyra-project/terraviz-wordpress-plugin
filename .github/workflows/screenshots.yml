@@ -1,0 +1,165 @@
+name: Screenshots
+
+# Capture screenshots of every block (front end) and the wp-admin dashboard
+# views by driving a real WordPress (wp-env) with Playwright. Two products:
+#
+#   - a downloadable gallery artifact ("here's how everything looks");
+#   - visual-regression: `toHaveScreenshot` diffs each shot against a committed
+#     baseline (tests/e2e/__snapshots__/) and fails on an unexpected change.
+#
+# A subset is also written with the canonical WordPress.org listing names
+# (.wordpress-org/screenshot-N.png), ready for a future WP.org SVN asset deploy.
+#
+# Kept OUT of the core ci.yml gate (its own workflow) so a screenshot flake
+# never blocks a merge. Bootstrap / refresh baselines by running this manually
+# with `update_baselines = true` (commits the new baselines + listing images
+# back to the branch).
+#
+# Least-privilege split: the `capture` job runs untrusted PR code (npm scripts,
+# Playwright) and is read-only. Only the separate `commit-baselines` job — which
+# runs solely on workflow_dispatch and executes no PR code — gets contents:write.
+
+on:
+  workflow_dispatch:
+    inputs:
+      update_baselines:
+        description: 'Regenerate and commit visual-regression baselines + WordPress.org listing images'
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - 'blocks/**'
+      - 'src/**'
+      - 'assets/**'
+      - 'tests/e2e/**'
+      - 'playwright.config.js'
+      - '.github/workflows/screenshots.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    name: Capture block & dashboard screenshots
+    runs-on: ubuntu-latest
+    # Read-only: this job runs untrusted PR code, so the token can never write.
+    permissions:
+      contents: read
+    steps:
+      # Default ref: the PR merge ref for pull_request (works for forks), and the
+      # selected branch for workflow_dispatch.
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # The PHP blocks register from build/; the dashboard app is built here too.
+      - run: npm run build
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Enable offline E2E fixtures for wp-env
+        run: |
+          cat > .wp-env.override.json <<'JSON'
+          {
+            "mappings": {
+              "wp-content/mu-plugins": "./tests/e2e/mu-plugins"
+            },
+            "config": {
+              "TERRAVIZ_E2E": true
+            }
+          }
+          JSON
+
+      - name: Start WordPress (wp-env)
+        run: npx wp-env start --update
+
+      - name: Capture screenshots
+        run: |
+          if [ "${{ github.event.inputs.update_baselines }}" = "true" ]; then
+            npm run screenshots:update
+          else
+            npm run screenshots
+          fi
+
+      - name: Upload screenshot gallery
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-gallery
+          path: |
+            tests/e2e/.artifacts/gallery/**
+            .wordpress-org/screenshot-*.png
+          # The output dirs are dot-prefixed; include them explicitly.
+          include-hidden-files: true
+          if-no-files-found: warn
+
+      - name: Upload Playwright report (diffs on failure)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: tests/e2e/.artifacts/report/**
+          include-hidden-files: true
+          if-no-files-found: warn
+
+      # On a baseline refresh, hand the regenerated baselines + listing images to
+      # the write-capable commit job (this job stays read-only).
+      - name: Upload refreshed baselines
+        if: ${{ github.event.inputs.update_baselines == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: refreshed-baselines
+          path: |
+            tests/e2e/__snapshots__/**
+            .wordpress-org/screenshot-*.png
+          include-hidden-files: true
+          if-no-files-found: warn
+
+      - name: Stop WordPress (wp-env)
+        if: always()
+        run: npx wp-env stop
+
+  commit-baselines:
+    name: Commit refreshed baselines
+    needs: capture
+    # Only on an explicit manual refresh — never on pull_request. This job runs
+    # no PR code (just checkout + download artifact + git commit), so it is safe
+    # to grant write here.
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.update_baselines == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Download refreshed baselines
+        uses: actions/download-artifact@v4
+        with:
+          name: refreshed-baselines
+          path: .
+
+      - name: Commit & push baselines and listing images
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add tests/e2e/__snapshots__ .wordpress-org
+          if git diff --cached --quiet; then
+            echo 'No screenshot changes to commit.'
+          else
+            git commit -s \
+              -m 'ci: refresh screenshot baselines and WordPress.org listing images' \
+              -m 'Co-Authored-By: Claude <noreply@anthropic.com>'
+            git push origin HEAD:${{ github.ref_name }}
+          fi

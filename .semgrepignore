@@ -7,3 +7,9 @@ build/
 src/Contract/WireDataset.php
 src/Contract/CatalogResponse.php
 src/Contract/WellKnownDoc.php
+
+# E2E screenshot harness (Playwright + wp-env fixtures). Dev-only scaffolding
+# that never ships (see .distignore) and is excluded from PHPCS too. Its fixture
+# mu-plugin deliberately serves raw SVG and short-circuits the read API — test
+# constructs, not a production/runtime surface.
+tests/e2e/

@@ -25,8 +25,13 @@ package-lock.json
 phpcs.xml.dist
 phpunit.xml.dist
 webpack.config.js
+playwright.config.js
 .wp-env.json
 .wp-env.override.json
+
+# Screenshot suite: WordPress.org listing images live here and deploy to the
+# plugin SVN `assets/`, not into the installable ZIP.
+.wordpress-org
 
 # Human/dev docs (readme.txt is the WordPress-facing one and DOES ship)
 CLAUDE.md
