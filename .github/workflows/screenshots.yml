@@ -14,6 +14,10 @@ name: Screenshots
 # never blocks a merge. Bootstrap / refresh baselines by running this manually
 # with `update_baselines = true` (commits the new baselines + listing images
 # back to the branch).
+#
+# Least-privilege split: the `capture` job runs untrusted PR code (npm scripts,
+# Playwright) and is read-only. Only the separate `commit-baselines` job — which
+# runs solely on workflow_dispatch and executes no PR code — gets contents:write.
 
 on:
   workflow_dispatch:
@@ -39,19 +43,15 @@ permissions:
   contents: read
 
 jobs:
-  screenshots:
+  capture:
     name: Capture block & dashboard screenshots
     runs-on: ubuntu-latest
-    # `permissions` cannot use expressions, so it is static. `contents: write` is
-    # only ever *exercised* by the dispatch-only "commit refreshed baselines"
-    # step (guarded by inputs.update_baselines); on pull_request runs nothing
-    # writes, and GitHub issues a read-only token for fork PRs regardless.
+    # Read-only: this job runs untrusted PR code, so the token can never write.
     permissions:
-      contents: write
+      contents: read
     steps:
-      # Use checkout's default ref: the PR merge ref for pull_request (works for
-      # forks, where head_ref doesn't exist in this repo), and the selected
-      # branch for workflow_dispatch (so a baseline refresh can push to it).
+      # Default ref: the PR merge ref for pull_request (works for forks), and the
+      # selected branch for workflow_dispatch.
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
@@ -112,8 +112,45 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
 
-      - name: Commit refreshed baselines & listing images
+      # On a baseline refresh, hand the regenerated baselines + listing images to
+      # the write-capable commit job (this job stays read-only).
+      - name: Upload refreshed baselines
         if: ${{ github.event.inputs.update_baselines == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: refreshed-baselines
+          path: |
+            tests/e2e/__snapshots__/**
+            .wordpress-org/screenshot-*.png
+          include-hidden-files: true
+          if-no-files-found: warn
+
+      - name: Stop WordPress (wp-env)
+        if: always()
+        run: npx wp-env stop
+
+  commit-baselines:
+    name: Commit refreshed baselines
+    needs: capture
+    # Only on an explicit manual refresh — never on pull_request. This job runs
+    # no PR code (just checkout + download artifact + git commit), so it is safe
+    # to grant write here.
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.update_baselines == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Download refreshed baselines
+        uses: actions/download-artifact@v4
+        with:
+          name: refreshed-baselines
+          path: .
+
+      - name: Commit & push baselines and listing images
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -124,9 +161,5 @@ jobs:
             git commit -s \
               -m 'ci: refresh screenshot baselines and WordPress.org listing images' \
               -m 'Co-Authored-By: Claude <noreply@anthropic.com>'
-            git push origin HEAD:${{ github.head_ref || github.ref_name }}
+            git push origin HEAD:${{ github.ref_name }}
           fi
-
-      - name: Stop WordPress (wp-env)
-        if: always()
-        run: npx wp-env stop
