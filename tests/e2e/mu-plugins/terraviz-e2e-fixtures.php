@@ -38,14 +38,17 @@ if ( ! terraviz_e2e_enabled() ) {
 }
 
 /**
- * Read a fixture file from tests/e2e/fixtures and substitute the {{SITE}}
+ * Read a fixture file from ./fixtures (beside this mu-plugin) and substitute the {{SITE}}
  * token with this install's home URL, so thumbnail links resolve same-origin.
  *
  * @param string $name Fixture basename without extension.
  * @return string|null Raw JSON body, or null when the fixture is missing.
  */
 function terraviz_e2e_fixture( $name ) {
-	$path = __DIR__ . '/../fixtures/' . $name . '.json';
+	// Fixtures live beside this mu-plugin (tests/e2e/mu-plugins/fixtures) so the
+	// single wp-env mapping that mounts this directory into wp-content/mu-plugins
+	// carries them into the container too.
+	$path = __DIR__ . '/fixtures/' . $name . '.json';
 	if ( ! is_readable( $path ) ) {
 		return null;
 	}

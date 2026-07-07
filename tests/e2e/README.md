@@ -19,7 +19,7 @@ Each captured shot fans out to up to three places (see `helpers/shots.js`):
 
 The suite never touches the live Terraviz node. `mu-plugins/terraviz-e2e-fixtures.php`
 (inert unless `TERRAVIZ_E2E` is set) short-circuits the public read API with the
-canned JSON in `fixtures/` and serves placeholder SVG thumbnails same-origin, so
+canned JSON in `mu-plugins/fixtures/` and serves placeholder SVG thumbnails same-origin, so
 every run is byte-stable and offline. The click-to-load poster is the default,
 so the heavy cross-origin globe iframe never boots during a shot — the capture
 is the server-rendered fallback (title, abstract, thumbnail, tags, link).
