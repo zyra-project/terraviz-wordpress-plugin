@@ -54,9 +54,22 @@ which page to visit.
 
 ## Bootstrapping / refreshing baselines
 
-Baselines are PNGs generated on the CI **Linux** runner, so they must be created
-there, not on a developer's macOS/Windows machine (fonts/AA differ). Run the
-`Screenshots` workflow manually with **`update_baselines = true`** — it captures
-with `--update-snapshots` and commits the refreshed `__snapshots__/` baselines
-and `.wordpress-org/` listing images back to the branch. Do this once to seed
-them, then again whenever an intentional UI change moves the pixels.
+Baselines are PNGs generated on the CI **Linux** runner — reproduce that
+environment when regenerating, or the fonts/anti-aliasing will differ from what
+CI compares against. The `Screenshots` workflow is **read-only** and never
+commits (the protected default branch can't be pushed to directly, and the job
+runs untrusted PR code), so baselines land through a PR:
+
+- **Alongside a UI change (the common case):** on your feature branch, run
+  `npm run screenshots:update` locally (needs Docker) to regenerate the
+  `__snapshots__/` baselines and `.wordpress-org/` images, and commit the diff
+  in the same PR. The PR's own `Screenshots` run then validates them. If your
+  local OS renders differently from CI, use the artifact path below instead.
+- **From CI (no local Docker, or the initial bootstrap):** run the `Screenshots`
+  workflow manually with **`update_baselines = true`**. It captures with
+  `--update-snapshots` and uploads a **`refreshed-baselines`** artifact
+  (`tests/e2e/__snapshots__/` + `.wordpress-org/screenshot-N.png`). Download it,
+  drop the files into the repo, and open a PR.
+
+Either way the committed baselines are what `toHaveScreenshot` diffs against;
+review the images in the PR as you would any change.
