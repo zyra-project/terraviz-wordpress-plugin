@@ -157,6 +157,19 @@ hand; they're excluded from PHPCS.
   network. `tests/smoke/` hits the **live canonical node's public API** and
   asserts a block still renders — a contract-drift tripwire; it self-skips when
   the node is unreachable.
+- `tests/e2e/` is the **screenshot / visual-regression suite** (Playwright
+  driving a real `wp-env` WordPress, so it needs Docker; `npm run screenshots`).
+  It captures every block + the wp-admin dashboard views against **offline
+  fixtures**: a gated mu-plugin (`tests/e2e/mu-plugins/`, inert unless the
+  `TERRAVIZ_E2E` constant is set) short-circuits the public read API, and its
+  fixture JSON lives **beside** the mu-plugin (`.../mu-plugins/fixtures/`) so the
+  single wp-env mapping mounts it into the container. Baselines
+  (`tests/e2e/__snapshots__/*.png`) are PNGs generated on the **CI Linux
+  runner** — regenerate with `npm run screenshots:update` and commit them **via a
+  PR** (`-s` signed like any commit; the workflow is read-only and never writes
+  to the repo). `.wordpress-org/screenshot-N.png` are the WordPress.org listing
+  images (numbered to `readme.txt`'s `== Screenshots ==`), not shipped in the
+  ZIP. Full guide: [`tests/e2e/README.md`](tests/e2e/README.md).
 
 ## CI
 
@@ -166,5 +179,11 @@ hand; they're excluded from PHPCS.
   to the Security → Code scanning tab. CodeQL has **no PHP analyzer**, so Semgrep
   is what actually covers this (mostly-PHP) codebase. **Blocking** — `semgrep
   scan` exits non-zero on any finding and fails the check (baseline is 0
-  findings). `.semgrepignore` skips vendored/build output and the generated
-  `src/Contract/*` types.
+  findings). `.semgrepignore` skips vendored/build output, the generated
+  `src/Contract/*` types, and the E2E harness (`tests/e2e/`).
+- `.github/workflows/screenshots.yml` — the Playwright screenshot /
+  visual-regression suite (see Tests). **Non-gating** (its own workflow, kept out
+  of `ci.yml`) so a screenshot flake never blocks a merge. It is **read-only**;
+  on a manual `update_baselines` dispatch it uploads a `refreshed-baselines`
+  artifact to commit via a PR, rather than pushing to the protected default
+  branch (a direct push can't satisfy the required status checks).

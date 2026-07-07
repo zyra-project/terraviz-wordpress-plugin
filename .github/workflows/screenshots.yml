@@ -11,19 +11,22 @@ name: Screenshots
 # (.wordpress-org/screenshot-N.png), ready for a future WP.org SVN asset deploy.
 #
 # Kept OUT of the core ci.yml gate (its own workflow) so a screenshot flake
-# never blocks a merge. Bootstrap / refresh baselines by running this manually
-# with `update_baselines = true` (commits the new baselines + listing images
-# back to the branch).
+# never blocks a merge.
 #
-# Least-privilege split: the `capture` job runs untrusted PR code (npm scripts,
-# Playwright) and is read-only. Only the separate `commit-baselines` job — which
-# runs solely on workflow_dispatch and executes no PR code — gets contents:write.
+# Updating baselines: this workflow never writes to the repo (it is read-only —
+# a protected default branch can't be pushed to directly anyway, and the job
+# runs untrusted PR code). To (re)generate baselines, run it manually with
+# `update_baselines = true`; it uploads a `refreshed-baselines` artifact
+# (tests/e2e/__snapshots__/ + .wordpress-org/screenshot-N.png) that you commit
+# via a PR. Day to day, regenerate on your feature branch with
+# `npm run screenshots:update` and commit the diff alongside the UI change, so
+# the PR's own Screenshots run validates it. See tests/e2e/README.md.
 
 on:
   workflow_dispatch:
     inputs:
       update_baselines:
-        description: 'Regenerate and commit visual-regression baselines + WordPress.org listing images'
+        description: 'Regenerate baselines + WordPress.org listing images and upload them as a refreshed-baselines artifact to commit via a PR'
         type: boolean
         default: false
   pull_request:
@@ -112,8 +115,9 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
 
-      # On a baseline refresh, hand the regenerated baselines + listing images to
-      # the write-capable commit job (this job stays read-only).
+      # On a baseline refresh, publish the regenerated baselines + listing images
+      # as an artifact to download and commit via a PR (this workflow never
+      # writes to the repo itself — see the header note).
       - name: Upload refreshed baselines
         if: ${{ github.event.inputs.update_baselines == 'true' }}
         uses: actions/upload-artifact@v4
@@ -128,38 +132,3 @@ jobs:
       - name: Stop WordPress (wp-env)
         if: always()
         run: npx wp-env stop
-
-  commit-baselines:
-    name: Commit refreshed baselines
-    needs: capture
-    # Only on an explicit manual refresh — never on pull_request. This job runs
-    # no PR code (just checkout + download artifact + git commit), so it is safe
-    # to grant write here.
-    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.update_baselines == 'true' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref_name }}
-
-      - name: Download refreshed baselines
-        uses: actions/download-artifact@v4
-        with:
-          name: refreshed-baselines
-          path: .
-
-      - name: Commit & push baselines and listing images
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add tests/e2e/__snapshots__ .wordpress-org
-          if git diff --cached --quiet; then
-            echo 'No screenshot changes to commit.'
-          else
-            git commit -s \
-              -m 'ci: refresh screenshot baselines and WordPress.org listing images' \
-              -m 'Co-Authored-By: Claude <noreply@anthropic.com>'
-            git push origin HEAD:${{ github.ref_name }}
-          fi
