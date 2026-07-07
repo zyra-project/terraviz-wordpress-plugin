@@ -520,7 +520,7 @@ final class Renderer {
 				esc_attr( $load_label ),
 				$thumb_html
 			);
-		}
+		}//end if
 
 		/* translators: %s: dataset or tour title. */
 		$iframe_title = sprintf( __( 'Interactive Terraviz globe: %s', 'terraviz' ), $title );
