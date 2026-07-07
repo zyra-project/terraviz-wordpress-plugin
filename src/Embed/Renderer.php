@@ -821,11 +821,16 @@ final class Renderer {
 	 * @param array<string,mixed> $atts Attributes.
 	 */
 	private function telemetry_posture( array $atts ): string {
-		$value = array_key_exists( 'telemetry', $atts )
-			? (string) $atts['telemetry']
-			: (string) Options::get( 'telemetry', 'lazy' );
+		// A per-block/shortcode override only wins when it names a known
+		// posture; an unset or unrecognised attribute (e.g. the empty string
+		// the shortcode passes for unspecified attrs) must not clobber the
+		// site-wide setting.
+		if ( array_key_exists( 'telemetry', $atts )
+			&& in_array( (string) $atts['telemetry'], array( 'eager', 'lazy' ), true ) ) {
+			return (string) $atts['telemetry'];
+		}
 
-		return 'eager' === $value ? 'eager' : 'lazy';
+		return 'eager' === (string) Options::get( 'telemetry', 'lazy' ) ? 'eager' : 'lazy';
 	}
 
 	/**

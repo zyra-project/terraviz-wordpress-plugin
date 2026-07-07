@@ -215,6 +215,28 @@ class RendererTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'data-terraviz-src=', $html );
 	}
 
+	public function test_blank_telemetry_attribute_falls_back_to_site_setting(): void {
+		$renderer = $this->renderer_with(
+			array( '/api/v1/datasets/INTERNAL_SOS_768' => $this->dataset_payload() )
+		);
+
+		// The shortcode passes '' for attributes the author didn't set. An empty
+		// (unrecognised) telemetry attribute must not clobber a site-wide 'eager'
+		// setting by silently falling back to 'lazy'.
+		update_option( \Terraviz\Support\Options::OPTION, array( 'telemetry' => 'eager' ) );
+
+		$html = $renderer->render(
+			array(
+				'type'      => 'dataset',
+				'id'        => 'INTERNAL_SOS_768',
+				'poster'    => false,
+				'telemetry' => '',
+			)
+		);
+
+		$this->assertStringContainsString( 'data-terraviz-mode="eager"', $html );
+	}
+
 	public function test_poster_wins_over_eager_telemetry(): void {
 		$renderer = $this->renderer_with(
 			array( '/api/v1/datasets/INTERNAL_SOS_768' => $this->dataset_payload() )

@@ -129,7 +129,7 @@
 		return iframe;
 	}
 
-	function load( media ) {
+	function load( media, moveFocus ) {
 		if ( media.getAttribute( 'data-terraviz-loaded' ) === '1' ) {
 			return;
 		}
@@ -152,11 +152,16 @@
 			media.appendChild( iframe );
 		}
 
-		// Move keyboard focus into the freshly loaded globe for a11y.
-		try {
-			iframe.focus( { preventScroll: true } );
-		} catch ( e ) {
-			/* older browsers ignore the options arg */
+		// Move keyboard focus into the freshly loaded globe for a11y — but only
+		// when the load was triggered by an explicit user action (clicking the
+		// load button). Auto-load paths (eager on page load, lazy on scroll)
+		// must not steal focus without interaction.
+		if ( moveFocus ) {
+			try {
+				iframe.focus( { preventScroll: true } );
+			} catch ( e ) {
+				/* older browsers ignore the options arg */
+			}
 		}
 	}
 
@@ -167,7 +172,8 @@
 		if ( button ) {
 			button.addEventListener( 'click', function ( ev ) {
 				ev.preventDefault();
-				load( media );
+				// Explicit user action: move focus into the globe.
+				load( media, true );
 			} );
 		}
 
