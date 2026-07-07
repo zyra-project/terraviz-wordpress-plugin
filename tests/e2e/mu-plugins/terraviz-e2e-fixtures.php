@@ -176,10 +176,19 @@ function terraviz_e2e_serve_thumb() {
 		'night-lights'     => array( 'Earth at Night', 'c8922b' ),
 		'coral-tour'       => array( 'Coral Reefs Tour', 'b5477e' ),
 	);
-	$preset = isset( $presets[ $key ] ) ? $presets[ $key ] : array( 'Terraviz Dataset', '2f6fb0' );
+	// Resolve the preset by *comparing* the key rather than indexing with it, so
+	// the request value only ever gates a branch and never flows into the
+	// response — $title/$color are always one of the constant strings above.
+	$title = 'Terraviz Dataset';
+	$color = '2f6fb0';
+	foreach ( $presets as $preset_key => $preset ) {
+		if ( $preset_key === $key ) {
+			$title = $preset[0];
+			$color = $preset[1];
+			break;
+		}
+	}
 
-	$title  = $preset[0];
-	$color  = $preset[1];
 	$width  = 640;
 	$height = 360;
 
