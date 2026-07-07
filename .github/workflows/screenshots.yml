@@ -26,7 +26,7 @@ on:
   workflow_dispatch:
     inputs:
       update_baselines:
-        description: 'Regenerate and commit visual-regression baselines + WordPress.org listing images'
+        description: 'Regenerate baselines + WordPress.org listing images and upload them as a refreshed-baselines artifact to commit via a PR'
         type: boolean
         default: false
   pull_request:
