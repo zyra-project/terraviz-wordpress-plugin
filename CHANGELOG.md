@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- The "Globe loading" setting's **"Load as soon as the page loads"** (eager)
+  option now actually loads the globe on page load. Previously the telemetry
+  posture was saved but never reached the renderer or frontend, so — with the
+  click-to-load poster off — every embed still deferred to scroll-into-view
+  regardless of the choice. The renderer now emits `data-terraviz-mode="eager"`
+  and the frontend boots the iframe immediately for it. The click-to-load
+  poster still takes precedence when enabled.
+
 ### Added
 - Fullscreen toggle on the interactive globe embeds. Once a globe loads, a
   button overlaid in its corner expands the embed to fullscreen (and back),

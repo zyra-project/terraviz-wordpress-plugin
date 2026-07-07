@@ -2,10 +2,12 @@
  * Terraviz embed — progressive enhancement.
  *
  * Replaces each server-rendered poster with the live globe iframe. Globes are
- * heavy, so we never boot them all on page load:
+ * heavy, so by default we never boot them all on page load:
  *   - mode="poster": load only when the visitor clicks "Load interactive globe".
  *   - mode="lazy":   load when the block scrolls into view (IntersectionObserver),
  *                    with the button as a keyboard/no-IO fallback.
+ *   - mode="eager":  load immediately on page load (the "Load as soon as the
+ *                    page loads" posture).
  *
  * No dependencies, no outbound calls — the iframe src is a Terraviz origin
  * composed entirely server-side.
@@ -127,7 +129,7 @@
 		return iframe;
 	}
 
-	function load( media ) {
+	function load( media, moveFocus ) {
 		if ( media.getAttribute( 'data-terraviz-loaded' ) === '1' ) {
 			return;
 		}
@@ -150,11 +152,16 @@
 			media.appendChild( iframe );
 		}
 
-		// Move keyboard focus into the freshly loaded globe for a11y.
-		try {
-			iframe.focus( { preventScroll: true } );
-		} catch ( e ) {
-			/* older browsers ignore the options arg */
+		// Move keyboard focus into the freshly loaded globe for a11y — but only
+		// when the load was triggered by an explicit user action (clicking the
+		// load button). Auto-load paths (eager on page load, lazy on scroll)
+		// must not steal focus without interaction.
+		if ( moveFocus ) {
+			try {
+				iframe.focus( { preventScroll: true } );
+			} catch ( e ) {
+				/* older browsers ignore the options arg */
+			}
 		}
 	}
 
@@ -165,11 +172,15 @@
 		if ( button ) {
 			button.addEventListener( 'click', function ( ev ) {
 				ev.preventDefault();
-				load( media );
+				// Explicit user action: move focus into the globe.
+				load( media, true );
 			} );
 		}
 
-		if ( mode === 'lazy' ) {
+		if ( mode === 'eager' ) {
+			// Load as soon as the page loads, no scroll or click required.
+			load( media );
+		} else if ( mode === 'lazy' ) {
 			if ( 'IntersectionObserver' in window ) {
 				var io = new IntersectionObserver(
 					function ( entries, obs ) {
