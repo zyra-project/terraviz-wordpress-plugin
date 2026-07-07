@@ -47,6 +47,13 @@ function seedPages() {
 	// reliably even when wp-env prefixes its own status lines.
 	const b64 = Buffer.from( JSON.stringify( PAGES ) ).toString( 'base64' );
 	const php = [
+		// `wp eval` runs with no logged-in user, so wp_insert_post() would apply
+		// KSES to the content — and KSES strips HTML comments, which are exactly
+		// the `<!-- wp:terraviz/... -->` block delimiters. Removing the KSES
+		// filters (registered on init for the logged-out user) keeps the block
+		// markup intact so the blocks actually render on the seeded pages.
+		'wp_set_current_user( 1 );',
+		'kses_remove_filters();',
 		"$pages = json_decode( base64_decode( '" + b64 + "' ), true );",
 		'$out = array();',
 		'foreach ( $pages as $p ):',
