@@ -123,14 +123,19 @@ composer run test       # PHPUnit (needs the WP test suite; see bin/install-wp-t
 # Screenshots / visual regression (Playwright + wp-env; needs Docker)
 npm run screenshots         # capture block + dashboard shots, diff vs baselines
 npm run screenshots:update  # regenerate baselines + WordPress.org listing images
+npm run visual-report       # diff gallery vs baselines → the PR-comment report
 ```
 
 The screenshot suite (`tests/e2e/`) drives a real WordPress with offline
 fixtures and captures every block and admin view — producing a gallery
 artifact, committed visual-regression baselines, and the numbered
-`.wordpress-org/screenshot-N.png` images for the WordPress.org listing. It runs
-in CI as the [`Screenshots`](.github/workflows/screenshots.yml) workflow (kept
-out of the core gate). See [`tests/e2e/README.md`](tests/e2e/README.md).
+`.wordpress-org/screenshot-N.png` images for the WordPress.org listing. On a PR
+it also posts a **"Visual report" comment** — a per-scene table of what changed
+(percent + changed pixels) with red-highlighted diff overlays in the gallery. It
+runs in CI as the [`Screenshots`](.github/workflows/screenshots.yml) workflow
+(kept out of the core gate; the comment is posted fork-safely by
+[`screenshots-comment.yml`](.github/workflows/screenshots-comment.yml)). See
+[`tests/e2e/README.md`](tests/e2e/README.md).
 
 Requires WordPress ≥ 6.1 and PHP ≥ 7.4. Licensed GPLv2-or-later.
 

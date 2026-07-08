@@ -14,6 +14,26 @@ Each captured shot fans out to up to three places (see `helpers/shots.js`):
 | **Gallery** | `tests/e2e/.artifacts/gallery/*.png` | "here's how everything looks" — uploaded as a CI artifact (git-ignored) |
 | **Baseline** | `tests/e2e/__snapshots__/*.png` | committed; `toHaveScreenshot` diffs against it and fails on unexpected change |
 | **WordPress.org** | `.wordpress-org/screenshot-N.png` | committed; the plugin-listing images (see [`.wordpress-org/README.md`](../../.wordpress-org/README.md)) |
+| **Visual report** | `tests/e2e/.artifacts/visual-report.{md,json}` + `gallery/*.diff.png` | per-scene diff summary posted as a PR comment (see below) |
+
+## Visual report — the PR comment
+
+After the capture, `visual-report.js` (`npm run visual-report`) diffs each fresh
+gallery actual against its committed baseline with `pixelmatch` and renders a
+**"Visual report" comment** on the PR: a per-scene table of what changed (percent
++ changed-pixel count), which scenes are new/uncaptured, and a red-highlighted
+`<name>.diff.png` overlay dropped into the gallery for every changed scene. It
+runs even when the `toHaveScreenshot` gate failed (`snap()` writes the gallery
+actual *before* asserting) and never fails a build itself — it's a **visual-review
+aid**, deliberately stricter than the gate (report threshold `0.001` vs the gate's
+`0.02`) so subtle changes still surface. Override with
+`--threshold`/`VISUAL_REPORT_THRESHOLD`.
+
+The comment is posted **fork-safely** by a second workflow: `screenshots.yml`
+(running untrusted PR code, read-only) uploads a data-only `visual-report`
+artifact, and `screenshots-comment.yml` — triggered by `workflow_run`, checking
+out no PR code — downloads it and upserts one sticky comment with
+`pull-requests: write`. So the write token never meets PR code.
 
 ## Determinism — no live node, no network
 
@@ -46,6 +66,7 @@ npx playwright install chromium   # first time only
 
 npm run screenshots               # capture + compare against baselines
 npm run screenshots:update        # regenerate baselines + listing images
+npm run visual-report             # diff gallery vs baselines → visual-report.{md,json}
 ```
 
 `global-setup.js` seeds one page per embed surface (via WP-CLI in the `cli`

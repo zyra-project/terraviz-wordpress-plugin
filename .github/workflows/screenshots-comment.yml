@@ -1,0 +1,107 @@
+name: Screenshots comment
+
+# Posts the "Visual report" PR comment produced by the Screenshots workflow.
+#
+# This is deliberately a SEPARATE, `workflow_run`-triggered workflow so the
+# write token never meets untrusted PR code:
+#
+#   - Screenshots (screenshots.yml) runs the PR's code with a read-only token
+#     and uploads a data-only `visual-report` artifact (Markdown + JSON + the PR
+#     number). It cannot comment.
+#   - This workflow runs from the BASE repo's default branch — it checks out no
+#     PR code, only downloads that artifact and posts it — so it can safely hold
+#     `pull-requests: write`.
+#
+# The comment is a single sticky comment (found/updated via a marker), and the
+# report is advisory: it never fails a build.
+
+on:
+  workflow_run:
+    workflows: [ 'Screenshots' ]
+    types: [ completed ]
+
+# One poster per source PR run; don't cancel a post midway.
+concurrency:
+  group: screenshots-comment-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  comment:
+    name: Post visual report
+    runs-on: ubuntu-latest
+    # Only for runs triggered by a PR (skip workflow_dispatch baseline refreshes).
+    if: ${{ github.event.workflow_run.event == 'pull_request' }}
+    permissions:
+      contents: read
+      actions: read       # download the artifact from the triggering run
+      pull-requests: write
+    steps:
+      - name: Download visual report artifact
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: visual-report
+          path: report
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upsert the sticky comment
+        if: ${{ steps.download.outcome == 'success' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            let body;
+            try {
+              body = fs.readFileSync('report/visual-report.md', 'utf8');
+            } catch (e) {
+              core.info('No visual-report.md in the artifact; nothing to post.');
+              return;
+            }
+            if (!body.trim()) {
+              core.info('Empty report body; nothing to post.');
+              return;
+            }
+
+            // Prefer the PR number the capture job stashed (reliable for forks);
+            // fall back to the workflow_run payload.
+            let prNumber;
+            try {
+              prNumber = parseInt(fs.readFileSync('report/pr.txt', 'utf8').trim(), 10);
+            } catch (e) {}
+            if (!prNumber) {
+              const prs = context.payload.workflow_run.pull_requests || [];
+              prNumber = prs.length ? prs[0].number : null;
+            }
+            if (!prNumber) {
+              core.info('Could not resolve a PR number; skipping.');
+              return;
+            }
+
+            const { owner, repo } = context.repo;
+            const marker = '<!-- terraviz-visual-report -->';
+
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              { owner, repo, issue_number: prNumber, per_page: 100 }
+            );
+            const existing = comments.find(
+              (c) => c.body && c.body.includes(marker)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id, body,
+              });
+              core.info(`Updated visual report comment on #${prNumber}.`);
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: prNumber, body,
+              });
+              core.info(`Created visual report comment on #${prNumber}.`);
+            }

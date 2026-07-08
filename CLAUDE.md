@@ -169,7 +169,11 @@ hand; they're excluded from PHPCS.
   PR** (`-s` signed like any commit; the workflow is read-only and never writes
   to the repo). `.wordpress-org/screenshot-N.png` are the WordPress.org listing
   images (numbered to `readme.txt`'s `== Screenshots ==`), not shipped in the
-  ZIP. Full guide: [`tests/e2e/README.md`](tests/e2e/README.md).
+  ZIP. After the capture, `tests/e2e/visual-report.js` (`npm run visual-report`,
+  uses `pixelmatch`/`pngjs`) diffs the gallery actuals against the baselines and
+  renders the **"Visual report" PR comment** (per-scene change table +
+  `*.diff.png` overlays); it's advisory and stricter than the gate (`0.001` vs
+  `0.02`). Full guide: [`tests/e2e/README.md`](tests/e2e/README.md).
 
 ## CI
 
@@ -186,4 +190,9 @@ hand; they're excluded from PHPCS.
   of `ci.yml`) so a screenshot flake never blocks a merge. It is **read-only**;
   on a manual `update_baselines` dispatch it uploads a `refreshed-baselines`
   artifact to commit via a PR, rather than pushing to the protected default
-  branch (a direct push can't satisfy the required status checks).
+  branch (a direct push can't satisfy the required status checks). It also
+  uploads a data-only `visual-report` artifact.
+- `.github/workflows/screenshots-comment.yml` — posts the visual-report artifact
+  as a sticky PR comment. Separate `workflow_run` workflow (checks out **no PR
+  code**) so it can safely hold `pull-requests: write` — the read-only capture
+  job never touches the write token. Skips non-PR runs (e.g. baseline refreshes).
