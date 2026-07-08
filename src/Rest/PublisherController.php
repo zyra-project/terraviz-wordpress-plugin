@@ -51,6 +51,7 @@ final class PublisherController {
 	private const EVENTS_BASE = '/publisher/events';
 	private const FEEDS_BASE  = '/publisher/feeds';
 	private const HERO_BASE   = '/publisher/featured-hero';
+	private const MEDIA_BASE  = '/publisher/media/youtube-channels';
 
 	/**
 	 * URL-segment pattern for a dataset id (ULID or slug).
@@ -236,6 +237,18 @@ final class PublisherController {
 			)
 		);
 
+		// Generate an editable tour draft from a reviewed event — an editorial
+		// action, so publish tier (the node restricts it to admin/service).
+		register_rest_route(
+			self::NAMESPACE,
+			self::EVENTS_BASE . '/' . self::ID_PATTERN . '/tour',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'generate_event_tour' ),
+				'permission_callback' => array( $this, 'require_publish' ),
+			)
+		);
+
 		// Feed connectors (the RSS/EONET sources that generate proposed events).
 		// The node restricts every feed endpoint — reads included — to
 		// admin/service callers, so all of these require the configure tier.
@@ -321,6 +334,36 @@ final class PublisherController {
 					'callback'            => array( $this, 'clear_featured_hero' ),
 					'permission_callback' => array( $this, 'require_publish' ),
 				),
+			)
+		);
+
+		// Media channels (the vetted YouTube channels panel-media suggestions draw
+		// from). Shown as a sub-tab of the Feeds screen; the node restricts every
+		// endpoint to admin/service callers, so all require the configure tier.
+		register_rest_route(
+			self::NAMESPACE,
+			self::MEDIA_BASE,
+			array(
+				array(
+					'methods'             => 'GET',
+					'callback'            => array( $this, 'list_media_channels' ),
+					'permission_callback' => array( $this, 'require_configure' ),
+				),
+				array(
+					'methods'             => 'POST',
+					'callback'            => array( $this, 'create_media_channel' ),
+					'permission_callback' => array( $this, 'require_configure' ),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			self::MEDIA_BASE . '/' . self::ID_PATTERN,
+			array(
+				'methods'             => 'DELETE',
+				'callback'            => array( $this, 'delete_media_channel' ),
+				'permission_callback' => array( $this, 'require_configure' ),
 			)
 		);
 	}
@@ -465,6 +508,22 @@ final class PublisherController {
 	}
 
 	/**
+	 * POST generate a tour draft from a reviewed event. Body is empty — the node
+	 * assembles stops from the event's vetted dataset pairings.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function generate_event_tour( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		return $this->respond( $client->generate_event_tour( (string) $request->get_param( 'id' ) ) );
+	}
+
+	/**
 	 * GET the feed-connector list.
 	 *
 	 * @return WP_REST_Response
@@ -590,6 +649,52 @@ final class PublisherController {
 		}
 
 		return $this->respond( $client->clear_featured_hero() );
+	}
+
+	/**
+	 * GET the effective YouTube channel allowlist (built-in + custom).
+	 *
+	 * @return WP_REST_Response
+	 */
+	public function list_media_channels(): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		return $this->respond( $client->list_media_channels() );
+	}
+
+	/**
+	 * POST add a custom YouTube channel by URL.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function create_media_channel( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		$body = $this->normalize_media_channel_body( (array) $request->get_json_params() );
+
+		return $this->respond( $client->create_media_channel( $body ) );
+	}
+
+	/**
+	 * DELETE a custom YouTube channel.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function delete_media_channel( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		return $this->respond( $client->delete_media_channel( (string) $request->get_param( 'id' ) ) );
 	}
 
 	/**
@@ -1068,6 +1173,25 @@ final class PublisherController {
 		// (array/object) is dropped rather than stringified to "Array".
 		if ( array_key_exists( 'headline', $raw ) && ( null === $raw['headline'] || is_scalar( $raw['headline'] ) ) ) {
 			$out['headline'] = null === $raw['headline'] ? null : (string) $raw['headline'];
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Reduce a caller-supplied media-channel body to the single `url` the node
+	 * accepts. The node resolves the URL to a canonical channel id and performs
+	 * the authoritative validation (recognisable YouTube URL, length), returning
+	 * a field-error envelope we pass through.
+	 *
+	 * @param array<string,mixed> $raw Decoded JSON body.
+	 * @return array<string,mixed>
+	 */
+	public function normalize_media_channel_body( array $raw ): array {
+		$out = array();
+
+		if ( isset( $raw['url'] ) && ( is_string( $raw['url'] ) || is_numeric( $raw['url'] ) ) ) {
+			$out['url'] = trim( (string) $raw['url'] );
 		}
 
 		return $out;

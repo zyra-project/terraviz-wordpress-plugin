@@ -21,6 +21,8 @@ import FeedForm from './FeedForm';
 import Sidebar, { NAV, allowedKeys } from './Sidebar';
 import Overview from './Overview';
 import RightNow from './RightNow';
+import MediaChannels from './MediaChannels';
+import SubTabs from './SubTabs';
 import { deriveStatus } from './status';
 import {
 	listDatasets,
@@ -152,7 +154,7 @@ function DatasetsSection( { boot, intent, onIntentConsumed } ) {
 	);
 }
 
-function EventsSection() {
+function EventsSection( { boot } ) {
 	const [ reviewing, setReviewing ] = useState( null );
 	const [ filter, setFilter ] = useState( 'proposed' );
 	const [ events, setEvents ] = useState( [] );
@@ -184,6 +186,7 @@ function EventsSection() {
 		return (
 			<EventReview
 				event={ reviewing }
+				boot={ boot }
 				onReviewed={ () => setReviewing( null ) }
 				onCancel={ () => setReviewing( null ) }
 			/>
@@ -212,6 +215,7 @@ function EventsSection() {
 }
 
 function FeedsSection() {
+	const [ tab, setTab ] = useState( 'feeds' );
 	const [ editing, setEditing ] = useState( null );
 	const [ feeds, setFeeds ] = useState( [] );
 	const [ loading, setLoading ] = useState( false );
@@ -253,6 +257,7 @@ function FeedsSection() {
 			.finally( () => setBusyId( null ) );
 	};
 
+	// Editing a feed connector is a full-screen form; keep it above the sub-tabs.
 	if ( editing ) {
 		return (
 			<FeedForm
@@ -265,35 +270,55 @@ function FeedsSection() {
 
 	return (
 		<div>
-			{ notice && (
-				<Notice
-					status={ notice.type }
-					onRemove={ () => setNotice( null ) }
-				>
-					{ notice.text }
-				</Notice>
-			) }
-			<FeedList
-				feeds={ feeds }
-				loading={ loading }
-				busyId={ busyId }
-				onNew={ () => setEditing( 'new' ) }
-				onEdit={ ( feed ) => setEditing( feed ) }
-				onToggle={ ( feed, enabled ) =>
-					runAction( updateFeed( feed.id, { enabled } ), feed.id )
-				}
-				onDelete={ ( feed ) => {
-					const msg = __(
-						'Delete this feed connector? Events it already ingested are kept.',
-						'terraviz'
-					);
-					// eslint-disable-next-line no-alert -- a native confirm is acceptable for a destructive wp-admin action.
-					if ( ! window.confirm( msg ) ) {
-						return;
-					}
-					runAction( deleteFeed( feed.id ), feed.id );
-				} }
+			<SubTabs
+				tabs={ [
+					{ key: 'feeds', label: __( 'News feeds', 'terraviz' ) },
+					{
+						key: 'media',
+						label: __( 'Media channels', 'terraviz' ),
+					},
+				] }
+				active={ tab }
+				onSelect={ setTab }
 			/>
+			{ tab === 'media' ? (
+				<MediaChannels />
+			) : (
+				<>
+					{ notice && (
+						<Notice
+							status={ notice.type }
+							onRemove={ () => setNotice( null ) }
+						>
+							{ notice.text }
+						</Notice>
+					) }
+					<FeedList
+						feeds={ feeds }
+						loading={ loading }
+						busyId={ busyId }
+						onNew={ () => setEditing( 'new' ) }
+						onEdit={ ( feed ) => setEditing( feed ) }
+						onToggle={ ( feed, enabled ) =>
+							runAction(
+								updateFeed( feed.id, { enabled } ),
+								feed.id
+							)
+						}
+						onDelete={ ( feed ) => {
+							const msg = __(
+								'Delete this feed connector? Events it already ingested are kept.',
+								'terraviz'
+							);
+							// eslint-disable-next-line no-alert -- a native confirm is acceptable for a destructive wp-admin action.
+							if ( ! window.confirm( msg ) ) {
+								return;
+							}
+							runAction( deleteFeed( feed.id ), feed.id );
+						} }
+					/>
+				</>
+			) }
 		</div>
 	);
 }
@@ -467,7 +492,7 @@ export default function App( { boot } ) {
 					/>
 				);
 			case 'events':
-				return <EventsSection />;
+				return <EventsSection boot={ boot } />;
 			case 'feeds':
 				return <FeedsSection />;
 			case 'right-now':

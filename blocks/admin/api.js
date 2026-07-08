@@ -192,6 +192,52 @@ export function previewFeed( { kind, url } ) {
 	return apiFetch( { url: `${ feedsUrl() }/preview?${ qs }` } );
 }
 
+const mediaUrl = () => `${ root }/media/youtube-channels`;
+
+/**
+ * List the effective YouTube channel allowlist (built-in + custom).
+ *
+ * @return {Promise<{channels: Array}>} `{ channels:[{channelId,channelName,builtin}] }`.
+ */
+export function listMediaChannels() {
+	return apiFetch( { url: mediaUrl() } );
+}
+
+/**
+ * Add a custom YouTube channel by pasted URL.
+ *
+ * @param {string} url Channel URL.
+ * @return {Promise<{channel: Object}>} The added channel.
+ */
+export function createMediaChannel( url ) {
+	return apiFetch( { url: mediaUrl(), method: 'POST', data: { url } } );
+}
+
+/**
+ * Remove a custom YouTube channel.
+ *
+ * @param {string} id Channel id (`UC…`).
+ * @return {Promise<{removed: boolean}>} Result.
+ */
+export function deleteMediaChannel( id ) {
+	return apiFetch( {
+		url: `${ mediaUrl() }/${ encodeURIComponent( id ) }`,
+		method: 'DELETE',
+	} );
+}
+
+const eventTourUrl = ( id ) => `${ eventUrl( id ) }/tour`;
+
+/**
+ * Generate an editable tour draft from a reviewed event.
+ *
+ * @param {string} id Event id.
+ * @return {Promise<{tour: Object}>} `{ tour:{ id, slug, title } }`.
+ */
+export function generateEventTour( id ) {
+	return apiFetch( { url: eventTourUrl( id ), method: 'POST' } );
+}
+
 const heroUrl = () => `${ root }/featured-hero`;
 
 /**

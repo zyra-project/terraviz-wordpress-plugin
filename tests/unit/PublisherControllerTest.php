@@ -933,4 +933,139 @@ class PublisherControllerTest extends WP_UnitTestCase {
 		$this->assertSame( 409, $response->get_status() );
 		$this->assertSame( 'credential_missing', $response->get_data()['error'] );
 	}
+
+	public function test_generate_event_tour_forwards_post_to_tour_path(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['POST'] = array(
+			'response' => array( 'code' => 201 ),
+			'body'     => (string) wp_json_encode( array( 'tour' => array( 'id' => 'T1' ) ) ),
+		);
+
+		$request = new WP_REST_Request( 'POST' );
+		$request->set_param( 'id', 'EV1' );
+		$response = $this->controller->generate_event_tour( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 201, $response->get_status() );
+		$this->assertContains( 'POST', $this->sent_methods );
+		$this->assertStringEndsWith( '/api/v1/publish/events/EV1/tour', end( $this->sent_urls ) );
+	}
+
+	public function test_generate_event_tour_without_credential_returns_409(): void {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+
+		$request = new WP_REST_Request( 'POST' );
+		$request->set_param( 'id', 'EV1' );
+		$response = $this->controller->generate_event_tour( $request );
+
+		$this->assertSame( 409, $response->get_status() );
+		$this->assertSame( 'credential_missing', $response->get_data()['error'] );
+	}
+
+	public function test_media_channels_require_configure_tier(): void {
+		$admin  = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		$editor = self::factory()->user->create( array( 'role' => 'editor' ) );
+
+		// Media channels reuse the configure gate (the node restricts them to
+		// admin/service), so a publish-tier editor is not enough.
+		wp_set_current_user( $admin );
+		$this->assertTrue( $this->controller->require_configure() );
+
+		wp_set_current_user( $editor );
+		$this->assertFalse( $this->controller->require_configure() );
+	}
+
+	public function test_list_media_channels_forwards_get(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['GET'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode( array( 'channels' => array() ) ),
+		);
+
+		$response = $this->controller->list_media_channels();
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertStringEndsWith( '/api/v1/publish/media/youtube-channels', end( $this->sent_urls ) );
+	}
+
+	public function test_create_media_channel_forwards_normalized_url(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['POST'] = array(
+			'response' => array( 'code' => 201 ),
+			'body'     => (string) wp_json_encode( array( 'channel' => array( 'channelId' => 'UC1' ) ) ),
+		);
+
+		$request = new WP_REST_Request( 'POST' );
+		$request->set_header( 'Content-Type', 'application/json' );
+		$request->set_body(
+			(string) wp_json_encode(
+				array(
+					'url'  => '  https://youtube.com/@nasa  ',
+					'evil' => 'DROP',
+				)
+			)
+		);
+		$response = $this->controller->create_media_channel( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 201, $response->get_status() );
+		$sent = json_decode( end( $this->sent_bodies ), true );
+		$this->assertSame( array( 'url' => 'https://youtube.com/@nasa' ), $sent );
+	}
+
+	public function test_delete_media_channel_forwards_delete(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['DELETE'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode( array( 'removed' => true ) ),
+		);
+
+		$request = new WP_REST_Request( 'DELETE' );
+		$request->set_param( 'id', 'UC1' );
+		$response = $this->controller->delete_media_channel( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertContains( 'DELETE', $this->sent_methods );
+		$this->assertStringEndsWith( '/api/v1/publish/media/youtube-channels/UC1', end( $this->sent_urls ) );
+	}
+
+	public function test_list_media_channels_without_credential_returns_409(): void {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+
+		$response = $this->controller->list_media_channels();
+
+		$this->assertSame( 409, $response->get_status() );
+		$this->assertSame( 'credential_missing', $response->get_data()['error'] );
+	}
+
+	public function test_normalize_media_channel_body_allowlists_url(): void {
+		$this->assertSame(
+			array( 'url' => 'https://youtube.com/@x' ),
+			$this->controller->normalize_media_channel_body(
+				array(
+					'url'  => '  https://youtube.com/@x  ',
+					'junk' => 1,
+				)
+			)
+		);
+		$this->assertSame( array(), $this->controller->normalize_media_channel_body( array( 'url' => array( 'a' ) ) ) );
+	}
 }
