@@ -1,9 +1,12 @@
 /**
- * The publisher dashboard root: a top-level section nav (Datasets | Events |
- * Feeds) over three workflows. Datasets switches between the list and the
- * create/edit form; Events (publish-tier only) switches between the review
- * queue and the per-event review screen; Feeds (configure-tier only) manages
- * the RSS/EONET source connectors that generate proposed events.
+ * The publisher dashboard root: a grouped left-sidebar IA (Overview · Catalog ·
+ * Newsroom · Insights · Settings) that mirrors the Terraviz app's Publisher
+ * Portal mockup, over the workflows the plugin has built. Datasets switches
+ * between the list and the create/edit form; Events (publish-tier) switches
+ * between the review queue and the per-event review screen; Feeds
+ * (configure-tier) manages the RSS/EONET source connectors. Sidebar items that
+ * aren't built yet route to a "coming soon" placeholder so the IA is complete
+ * from day one (Milestone A).
  */
 import { __ } from '@wordpress/i18n';
 import { useState, useEffect, useCallback } from '@wordpress/element';
@@ -14,6 +17,9 @@ import EventList from './EventList';
 import EventReview from './EventReview';
 import FeedList from './FeedList';
 import FeedForm from './FeedForm';
+import Sidebar, { NAV, allowedKeys } from './Sidebar';
+import Overview from './Overview';
+import { deriveStatus } from './status';
 import {
 	listDatasets,
 	publishDataset,
@@ -272,8 +278,109 @@ function FeedsSection() {
 	);
 }
 
+/**
+ * The "coming soon" placeholder for a nav item that is on the roadmap but not
+ * built yet. Keeps the IA complete without faking a feature.
+ *
+ * @param {Object} props
+ * @param {string} props.sectionKey Nav key of the unbuilt section.
+ * @return {JSX.Element} Placeholder panel.
+ */
+function ComingSoon( { sectionKey } ) {
+	const item = NAV.flatMap( ( g ) => g.items ).find(
+		( i ) => i.key === sectionKey
+	);
+	return (
+		<div
+			style={ {
+				border: '1px dashed #c3c4c7',
+				borderRadius: '4px',
+				padding: '32px',
+				textAlign: 'center',
+				color: '#646970',
+			} }
+		>
+			<p style={ { fontSize: '15px', margin: 0 } }>
+				{ __(
+					'This area is on the roadmap and not built yet.',
+					'terraviz'
+				) }
+			</p>
+			<p style={ { margin: '8px 0 0' } }>
+				{ __(
+					'Track progress in the plugin’s implementation plan.',
+					'terraviz'
+				) }
+			</p>
+			{ item && ! item.built && (
+				<p style={ { margin: '4px 0 0', fontSize: '12px' } }>
+					{ sectionKey }
+				</p>
+			) }
+		</div>
+	);
+}
+
 export default function App( { boot } ) {
-	const [ section, setSection ] = useState( 'datasets' );
+	const [ section, setSection ] = useState( 'overview' );
+	const [ summary, setSummary ] = useState( null );
+	const [ summaryLoading, setSummaryLoading ] = useState( true );
+
+	// Build the Overview figures from data the plugin already has: the caller's
+	// dataset list (counted by derived lifecycle status) and the proposed-events
+	// queue depth. Both failures degrade to a partial card rather than blocking.
+	const loadSummary = useCallback( () => {
+		setSummaryLoading( true );
+		const datasetsP = listDatasets()
+			.then( ( res ) =>
+				Array.isArray( res.datasets ) ? res.datasets : []
+			)
+			.catch( () => null );
+		const eventsP = boot.canPublish
+			? listEvents( 'proposed' )
+					.then( ( res ) =>
+						Array.isArray( res.events ) ? res.events.length : 0
+					)
+					.catch( () => null )
+			: Promise.resolve( null );
+
+		Promise.all( [ datasetsP, eventsP ] ).then(
+			( [ datasets, proposed ] ) => {
+				const counts = {
+					draft: 0,
+					published: 0,
+					retracted: 0,
+					total: 0,
+				};
+				let error = null;
+				if ( datasets === null ) {
+					error = __(
+						'Could not load your datasets — some figures may be unavailable.',
+						'terraviz'
+					);
+				} else {
+					datasets.forEach( ( d ) => {
+						counts[ deriveStatus( d ) ] += 1;
+					} );
+					counts.total = datasets.length;
+				}
+				setSummary( {
+					datasets: counts,
+					proposedEvents: proposed,
+					error,
+				} );
+				setSummaryLoading( false );
+			}
+		);
+	}, [ boot.canPublish ] );
+
+	// Load on mount (default section is Overview) and again whenever the user
+	// returns to Overview, so the counts reflect edits made elsewhere.
+	useEffect( () => {
+		if ( section === 'overview' ) {
+			loadSummary();
+		}
+	}, [ section, loadSummary ] );
 
 	if ( ! boot.credentialConfigured ) {
 		return (
@@ -292,66 +399,50 @@ export default function App( { boot } ) {
 		);
 	}
 
-	const showEvents = !! boot.canPublish;
-	const showFeeds = !! boot.canConfigure;
-	const activeSection =
-		( section === 'events' && showEvents ) ||
-		( section === 'feeds' && showFeeds )
-			? section
-			: 'datasets';
+	const keys = allowedKeys( boot );
+	const activeSection = keys.includes( section ) ? section : 'overview';
+	const activeItem = NAV.flatMap( ( g ) => g.items ).find(
+		( i ) => i.key === activeSection
+	);
+
+	const renderContent = () => {
+		switch ( activeSection ) {
+			case 'overview':
+				return (
+					<Overview
+						boot={ boot }
+						summary={ summary }
+						loading={ summaryLoading }
+						onNavigate={ setSection }
+					/>
+				);
+			case 'datasets':
+				return <DatasetsSection boot={ boot } />;
+			case 'events':
+				return <EventsSection />;
+			case 'feeds':
+				return <FeedsSection />;
+			default:
+				return <ComingSoon sectionKey={ activeSection } />;
+		}
+	};
 
 	return (
-		<div>
-			{ ( showEvents || showFeeds ) && (
-				<h2
-					className="nav-tab-wrapper"
-					style={ { marginBottom: '16px' } }
-				>
-					<button
-						type="button"
-						className={ `nav-tab${
-							activeSection === 'datasets'
-								? ' nav-tab-active'
-								: ''
-						}` }
-						onClick={ () => setSection( 'datasets' ) }
-					>
-						{ __( 'Datasets', 'terraviz' ) }
-					</button>
-					{ showEvents && (
-						<button
-							type="button"
-							className={ `nav-tab${
-								activeSection === 'events'
-									? ' nav-tab-active'
-									: ''
-							}` }
-							onClick={ () => setSection( 'events' ) }
-						>
-							{ __( 'Events', 'terraviz' ) }
-						</button>
-					) }
-					{ showFeeds && (
-						<button
-							type="button"
-							className={ `nav-tab${
-								activeSection === 'feeds'
-									? ' nav-tab-active'
-									: ''
-							}` }
-							onClick={ () => setSection( 'feeds' ) }
-						>
-							{ __( 'Feeds', 'terraviz' ) }
-						</button>
-					) }
-				</h2>
-			) }
-
-			{ activeSection === 'events' && <EventsSection /> }
-			{ activeSection === 'feeds' && <FeedsSection /> }
-			{ activeSection === 'datasets' && (
-				<DatasetsSection boot={ boot } />
-			) }
+		<div style={ { display: 'flex', alignItems: 'flex-start' } }>
+			<Sidebar
+				active={ activeSection }
+				boot={ boot }
+				badges={ {
+					events: ( summary && summary.proposedEvents ) || 0,
+				} }
+				onSelect={ setSection }
+			/>
+			<div style={ { flex: 1, minWidth: 0 } }>
+				{ activeItem && (
+					<h2 style={ { marginTop: 0 } }>{ activeItem.label }</h2>
+				) }
+				{ renderContent() }
+			</div>
 		</div>
 	);
 }
