@@ -97,7 +97,13 @@ function DatasetPreview( { dataset, origin } ) {
 	if ( ! dataset ) {
 		return null;
 	}
-	const thumb = dataset.thumbnail_ref || dataset.thumbnail || '';
+	// Prefer the node-resolved `thumbnail_url`; `thumbnail_ref` is a raw ref
+	// (R2 path / Vimeo id) that usually isn't a renderable http(s) URL. Mirrors
+	// the DatasetList preview cell.
+	const thumb =
+		safeHttpUrl( dataset.thumbnail_url ) ||
+		safeHttpUrl( dataset.thumbnail_ref ) ||
+		safeHttpUrl( dataset.thumbnail );
 	const link = safeHttpUrl(
 		`${ origin }/?dataset=${ encodeURIComponent( dataset.id ) }`
 	);
@@ -113,9 +119,9 @@ function DatasetPreview( { dataset, origin } ) {
 				maxWidth: '520px',
 			} }
 		>
-			{ thumb && safeHttpUrl( thumb ) && (
+			{ thumb && (
 				<img
-					src={ safeHttpUrl( thumb ) }
+					src={ thumb }
 					alt=""
 					style={ {
 						width: '96px',
@@ -234,14 +240,14 @@ export default function RightNow( { boot } ) {
 		setErrors( [] );
 		setNotice( null );
 
+		// The PUT is a full upsert, so send `headline` explicitly every time:
+		// the trimmed text, or null to clear it while keeping the same
+		// dataset/window (the proxy allowlists null-clears).
 		const body = {
 			dataset_id: datasetId.trim(),
 			window: { start: localToIso( start ), end: localToIso( end ) },
+			headline: headline.trim() || null,
 		};
-		const trimmed = headline.trim();
-		if ( trimmed ) {
-			body.headline = trimmed;
-		}
 
 		setFeaturedHero( body )
 			.then( ( res ) => {
