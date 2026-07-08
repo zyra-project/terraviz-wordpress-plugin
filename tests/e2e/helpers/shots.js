@@ -27,13 +27,23 @@ const WPORG = path.join( __dirname, '..', '..', '..', '.wordpress-org' );
  * @param {number}                             [opts.wporg] WordPress.org listing index (1-based) to also write.
  */
 async function snap( locator, name, expect, opts = {} ) {
+	// Capture at CSS scale so the gallery/listing PNGs match the baseline, which
+	// `toHaveScreenshot` writes at `scale: 'css'` (see playwright.config.js). Under
+	// a device-scale-factor > 1 (the mobile project) the default `scale: 'device'`
+	// would emit gallery PNGs at 2× the baseline's dimensions, and the visual
+	// report — which diffs gallery vs baseline — would flag every such shot as
+	// "resized". At DPR 1 this is a no-op, so the desktop shots are unchanged.
 	fs.mkdirSync( GALLERY, { recursive: true } );
-	await locator.screenshot( { path: path.join( GALLERY, `${ name }.png` ) } );
+	await locator.screenshot( {
+		path: path.join( GALLERY, `${ name }.png` ),
+		scale: 'css',
+	} );
 
 	if ( opts.wporg ) {
 		fs.mkdirSync( WPORG, { recursive: true } );
 		await locator.screenshot( {
 			path: path.join( WPORG, `screenshot-${ opts.wporg }.png` ),
+			scale: 'css',
 		} );
 	}
 
