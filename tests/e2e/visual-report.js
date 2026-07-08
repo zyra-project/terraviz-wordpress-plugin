@@ -43,6 +43,12 @@ const MARKER = '<!-- terraviz-visual-report -->';
 // VISUAL_REPORT_THRESHOLD.
 const DEFAULT_THRESHOLD = 0.001;
 
+// A dimension change larger than this fraction (on either axis) is treated as a
+// genuine resize. Anything smaller is a render wobble — e.g. an admin page that
+// settles a few px shorter than its baseline — so we compare the overlapping
+// region instead of blanket-flagging "resized". pixelmatch needs equal sizes.
+const SIZE_TOLERANCE = 0.01;
+
 // Human labels for the known scenes, keyed by their base name (without any
 // `-mobile` viewport suffix). Unknown scenes (e.g. a newly added spec) fall back
 // to a derived label; see sceneMeta().
@@ -111,6 +117,17 @@ function readPng( file ) {
 	return PNG.sync.read( fs.readFileSync( file ) );
 }
 
+// Copy the top-left w×h region of a PNG into a fresh RGBA buffer, so two
+// slightly different-sized images can be diffed on their common area.
+function cropRGBA( png, w, h ) {
+	const out = Buffer.alloc( w * h * 4 );
+	for ( let y = 0; y < h; y++ ) {
+		const srcStart = y * png.width * 4;
+		png.data.copy( out, y * w * 4, srcStart, srcStart + w * 4 );
+	}
+	return out;
+}
+
 // Compare one scene's actual against its baseline. Returns a metrics record and,
 // for a genuine change, writes a diff overlay into the gallery.
 function compareScene( name, threshold ) {
@@ -143,34 +160,45 @@ function compareScene( name, threshold ) {
 	const actual = readPng( actualPath );
 	const baseline = readPng( baselinePath );
 
-	// Dimension change — pixelmatch needs equal sizes; report it as a full change.
+	// pixelmatch needs equal dimensions. A large mismatch is a genuine resize; a
+	// sub-tolerance one is a wobble, so fall through and diff the shared region.
+	let sizeNote;
 	if ( actual.width !== baseline.width || actual.height !== baseline.height ) {
-		const totalPixels = Math.max(
-			actual.width * actual.height,
-			baseline.width * baseline.height
-		);
-		return {
-			...base,
-			status: 'resized',
-			width: actual.width,
-			height: actual.height,
-			baselineWidth: baseline.width,
-			baselineHeight: baseline.height,
-			changedPixels: totalPixels,
-			totalPixels,
-			ratio: 1,
-		};
+		const dw = Math.abs( actual.width - baseline.width );
+		const dh = Math.abs( actual.height - baseline.height );
+		const wRatio = dw / Math.max( actual.width, baseline.width );
+		const hRatio = dh / Math.max( actual.height, baseline.height );
+		if ( wRatio > SIZE_TOLERANCE || hRatio > SIZE_TOLERANCE ) {
+			const totalPixels = Math.max(
+				actual.width * actual.height,
+				baseline.width * baseline.height
+			);
+			return {
+				...base,
+				status: 'resized',
+				width: actual.width,
+				height: actual.height,
+				baselineWidth: baseline.width,
+				baselineHeight: baseline.height,
+				changedPixels: totalPixels,
+				totalPixels,
+				ratio: 1,
+			};
+		}
+		sizeNote = `±${ Math.max( dw, dh ) }px`;
 	}
 
-	const { width, height } = actual;
-	const totalPixels = width * height;
-	const diff = new PNG( { width, height } );
+	// Diff the overlapping top-left region (the whole image when sizes match).
+	const cmpW = Math.min( actual.width, baseline.width );
+	const cmpH = Math.min( actual.height, baseline.height );
+	const totalPixels = cmpW * cmpH;
+	const diff = new PNG( { width: cmpW, height: cmpH } );
 	const changedPixels = pixelmatch(
-		actual.data,
-		baseline.data,
+		sizeNote ? cropRGBA( actual, cmpW, cmpH ) : actual.data,
+		sizeNote ? cropRGBA( baseline, cmpW, cmpH ) : baseline.data,
 		diff.data,
-		width,
-		height,
+		cmpW,
+		cmpH,
 		{ threshold: 0.1, includeAA: false }
 	);
 	const ratio = totalPixels ? changedPixels / totalPixels : 0;
@@ -183,8 +211,9 @@ function compareScene( name, threshold ) {
 	return {
 		...base,
 		status: changed ? 'changed' : 'unchanged',
-		width,
-		height,
+		width: actual.width,
+		height: actual.height,
+		...( sizeNote ? { sizeNote } : {} ),
 		changedPixels,
 		totalPixels,
 		ratio,
@@ -204,7 +233,7 @@ function changeCell( s ) {
 		case 'resized':
 			return `resized ${ s.baselineWidth }×${ s.baselineHeight } → ${ s.width }×${ s.height }`;
 		default:
-			return `${ pct( s.ratio ) } (${ s.changedPixels } px)`;
+			return `${ pct( s.ratio ) } (${ s.changedPixels } px${ s.sizeNote ? `, ${ s.sizeNote }` : '' })`;
 	}
 }
 
