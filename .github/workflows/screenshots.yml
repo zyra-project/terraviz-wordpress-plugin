@@ -67,8 +67,27 @@ jobs:
       # The PHP blocks register from build/; the dashboard app is built here too.
       - run: npm run build
 
+      # `playwright install --with-deps` fetches Chromium plus a set of font
+      # packages from the Ubuntu mirror via apt, which intermittently stalls
+      # mid-download and hangs the step until the 6-hour job limit. Give apt a
+      # per-download socket timeout + retries so a stalled fetch aborts and is
+      # re-tried (instead of hanging), and wrap the whole install in an outer
+      # retry as a backstop. `timeout-minutes` is the final guard.
       - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
+        timeout-minutes: 15
+        run: |
+          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
+            | sudo tee /etc/apt/apt.conf.d/99timeout-retry >/dev/null
+          for attempt in 1 2 3; do
+            echo "Playwright install attempt ${attempt}/3"
+            if npx playwright install --with-deps chromium; then
+              exit 0
+            fi
+            echo "::warning::Playwright install attempt ${attempt} failed; retrying in 15s"
+            sleep 15
+          done
+          echo "::error::Playwright install failed after 3 attempts"
+          exit 1
 
       - name: Enable offline E2E fixtures for wp-env
         run: |
