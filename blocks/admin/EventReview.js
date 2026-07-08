@@ -15,7 +15,7 @@ import {
 	ExternalLink,
 	ToggleControl,
 } from '@wordpress/components';
-import { reviewEvent, normalizeError } from './api';
+import { reviewEvent, generateEventTour, normalizeError } from './api';
 import { safeHttpUrl } from './safeUrl';
 
 function initialEdits( ev ) {
@@ -61,11 +61,12 @@ function buildEdits( edits, original ) {
 	return out;
 }
 
-export default function EventReview( { event, onReviewed, onCancel } ) {
+export default function EventReview( { event, boot, onReviewed, onCancel } ) {
 	const [ edits, setEdits ] = useState( initialEdits( event ) );
 	const [ linkDecisions, setLinkDecisions ] = useState( {} );
 	const [ addIds, setAddIds ] = useState( '' );
 	const [ saving, setSaving ] = useState( false );
+	const [ generating, setGenerating ] = useState( false );
 	const [ errors, setErrors ] = useState( [] );
 	const [ notice, setNotice ] = useState( null );
 
@@ -124,6 +125,55 @@ export default function EventReview( { event, onReviewed, onCancel } ) {
 			} );
 	};
 
+	// Generate an editable tour draft from this event's vetted dataset pairings.
+	// The node returns the draft; we point the curator at the authoring dock on
+	// the node to polish captions/timing before publishing (nothing auto-publishes).
+	const generateTour = () => {
+		setGenerating( true );
+		setErrors( [] );
+		setNotice( null );
+		generateEventTour( event.id )
+			.then( ( res ) => {
+				const tour = ( res && res.tour ) || {};
+				const editUrl =
+					boot && boot.origin && tour.id
+						? safeHttpUrl(
+								`${
+									boot.origin
+								}/?tourEdit=${ encodeURIComponent( tour.id ) }`
+						  )
+						: null;
+				setNotice( {
+					type: 'success',
+					text: __(
+						'Tour draft created. Polish it in the tour author before publishing.',
+						'terraviz'
+					),
+					link: editUrl,
+					linkLabel: __( 'Open in tour author', 'terraviz' ),
+				} );
+				setGenerating( false );
+			} )
+			.catch( ( e ) => {
+				const n = normalizeError( e );
+				// Prefer the node's specific reason: the top-level message, else
+				// the first field error (e.g. the `no_datasets` envelope's "no
+				// visible pairings"), before falling back to a generic line.
+				const fieldMsg = n.errors.length ? n.errors[ 0 ].message : '';
+				setNotice( {
+					type: 'error',
+					text:
+						n.message ||
+						fieldMsg ||
+						__(
+							'Could not generate a tour for this event.',
+							'terraviz'
+						),
+				} );
+				setGenerating( false );
+			} );
+	};
+
 	return (
 		<div style={ { maxWidth: '720px' } }>
 			<h2>{ __( 'Review event', 'terraviz' ) }</h2>
@@ -134,6 +184,14 @@ export default function EventReview( { event, onReviewed, onCancel } ) {
 					onRemove={ () => setNotice( null ) }
 				>
 					{ notice.text }
+					{ notice.link && (
+						<>
+							{ ' ' }
+							<ExternalLink href={ notice.link }>
+								{ notice.linkLabel }
+							</ExternalLink>
+						</>
+					) }
 				</Notice>
 			) }
 
@@ -316,9 +374,17 @@ export default function EventReview( { event, onReviewed, onCancel } ) {
 					{ __( 'Save changes', 'terraviz' ) }
 				</Button>
 				<Button
+					variant="secondary"
+					onClick={ generateTour }
+					isBusy={ generating }
+					disabled={ saving || generating }
+				>
+					{ __( 'Generate tour', 'terraviz' ) }
+				</Button>
+				<Button
 					variant="tertiary"
 					onClick={ onCancel }
-					disabled={ saving }
+					disabled={ saving || generating }
 				>
 					{ __( 'Back to queue', 'terraviz' ) }
 				</Button>

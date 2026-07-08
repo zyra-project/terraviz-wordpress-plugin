@@ -445,6 +445,111 @@ class PublishClientTest extends WP_UnitTestCase {
 		$this->assertStringEndsWith( '/api/v1/publish/featured-hero', $this->captured_url );
 	}
 
+	public function test_generate_event_tour_posts_to_tour_path(): void {
+		$this->canned = $this->respond(
+			201,
+			(string) wp_json_encode(
+				array(
+					'tour' => array(
+						'id'    => 'T1',
+						'slug'  => 'event-x',
+						'title' => 'Event: X',
+					),
+				)
+			)
+		);
+
+		$result = $this->client()->generate_event_tour( 'EV1' );
+
+		$this->assertTrue( $result['ok'] );
+		$this->assertSame( 201, $result['status'] );
+		$this->assertSame( 'T1', $result['data']['tour']['id'] );
+		$this->assertSame( 'POST', $this->captured_args['method'] );
+		$this->assertStringEndsWith( '/api/v1/publish/events/EV1/tour', $this->captured_url );
+		// An empty body must serialise to a JSON object, not `[]`.
+		$this->assertSame( '{}', $this->captured_args['body'] );
+	}
+
+	public function test_generate_event_tour_passes_through_no_datasets(): void {
+		$this->canned = $this->respond(
+			400,
+			(string) wp_json_encode(
+				array(
+					'error'  => 'no_datasets',
+					'errors' => array(
+						array(
+							'field'   => 'links',
+							'code'    => 'no_datasets',
+							'message' => 'no visible pairings',
+						),
+					),
+				)
+			)
+		);
+
+		$result = $this->client()->generate_event_tour( 'EV1' );
+
+		$this->assertFalse( $result['ok'] );
+		$this->assertSame( 'no_datasets', $result['error'] );
+		$this->assertSame( 'links', $result['errors'][0]['field'] );
+	}
+
+	public function test_list_media_channels_gets_youtube_path(): void {
+		$this->canned = $this->respond(
+			200,
+			(string) wp_json_encode(
+				array(
+					'channels' => array(
+						array(
+							'channelId'   => 'UC1',
+							'channelName' => 'NASA',
+							'builtin'     => true,
+						),
+					),
+				)
+			)
+		);
+
+		$result = $this->client()->list_media_channels();
+
+		$this->assertTrue( $result['ok'] );
+		$this->assertSame( 'GET', $this->captured_args['method'] );
+		$this->assertStringEndsWith( '/api/v1/publish/media/youtube-channels', $this->captured_url );
+		$this->assertSame( 'NASA', $result['data']['channels'][0]['channelName'] );
+	}
+
+	public function test_create_media_channel_posts_url(): void {
+		$this->canned = $this->respond(
+			201,
+			(string) wp_json_encode(
+				array(
+					'channel' => array(
+						'channelId'   => 'UC2',
+						'channelName' => 'USGS',
+						'builtin'     => false,
+					),
+				)
+			)
+		);
+
+		$result = $this->client()->create_media_channel( array( 'url' => 'https://youtube.com/@usgs' ) );
+
+		$this->assertTrue( $result['ok'] );
+		$this->assertSame( 'POST', $this->captured_args['method'] );
+		$this->assertStringEndsWith( '/api/v1/publish/media/youtube-channels', $this->captured_url );
+		$this->assertSame( 'https://youtube.com/@usgs', json_decode( $this->captured_args['body'], true )['url'] );
+	}
+
+	public function test_delete_media_channel_deletes_encoded_id(): void {
+		$this->canned = $this->respond( 200, (string) wp_json_encode( array( 'removed' => true ) ) );
+
+		$result = $this->client()->delete_media_channel( 'UC3' );
+
+		$this->assertTrue( $result['ok'] );
+		$this->assertSame( 'DELETE', $this->captured_args['method'] );
+		$this->assertStringEndsWith( '/api/v1/publish/media/youtube-channels/UC3', $this->captured_url );
+	}
+
 	public function test_set_featured_hero_passes_through_validation_errors(): void {
 		$this->canned = $this->respond(
 			400,

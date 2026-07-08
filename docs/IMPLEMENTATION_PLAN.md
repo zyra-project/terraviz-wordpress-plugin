@@ -259,8 +259,8 @@ Cheap, high-value adds on **verified** contracts:
 | Item | Status | Upstream contract |
 |---|---|---|
 | **Right-now hero** management (set dataset + start/end + optional headline; clear), with the catalog-card preview | ✅ | `PUT/DELETE featured-hero.ts` (`{errors:[…]}` envelope) |
-| **Media-channels** sub-tab on the Feeds screen (list builtin + custom YouTube channels, add by URL) | 🔜 | `GET/POST media/youtube-channels.ts` → `{channels:[{channelId,channelName,builtin}]}` / `201 {channel}` |
-| **Generate tour** button on the event-review screen (publish-tier) | 🔜 | `POST events/[id]/tour.ts` → `201` tour draft |
+| **Media-channels** sub-tab on the Feeds screen (list builtin + custom YouTube channels, add by URL) | ✅ | `GET/POST media/youtube-channels.ts` → `{channels:[{channelId,channelName,builtin}]}` / `201 {channel}` |
+| **Generate tour** button on the event-review screen (publish-tier) | ✅ | `POST events/[id]/tour.ts` → `201` tour draft |
 | In-dashboard **Blog list** view (drafts/published, edit/view) — complements the existing WP→Terraviz post sync | 🔜 | `GET blog.ts?status=` |
 
 > **Right-now hero (shipped):** a `Newsroom → Right now` view (publish-tier)
@@ -272,6 +272,26 @@ Cheap, high-value adds on **verified** contracts:
 > `PublishClient::{get,set,clear}_featured_hero`,
 > `PublisherController` (`HERO_BASE` routes + `normalize_hero_body`),
 > `blocks/admin/RightNow.js`.
+
+> **Media channels + Generate tour (shipped):** the Feeds screen gained a
+> `News feeds | Media channels` sub-tab strip (`blocks/admin/SubTabs.js`); the
+> **Media channels** view (`blocks/admin/MediaChannels.js`, configure-tier) lists
+> built-in + custom YouTube channels and adds/removes custom ones by URL
+> (`PublishClient::list_media_channels` / `create_media_channel` /
+> `delete_media_channel`, `MEDIA_BASE` routes + `normalize_media_channel_body`).
+> The **Generate tour** button on the
+> event-review screen (`blocks/admin/EventReview.js`, publish-tier) creates an
+> editable tour draft and links the curator into the node's tour author
+> (`?tourEdit=<id>`); `PublishClient::generate_event_tour` +
+> `POST events/{id}/tour` route.
+>
+> **Blog — reframed around WordPress posts (next).** Rather than a node-side
+> editor, blog authoring stays in WordPress: the dashboard Blog list surfaces the
+> node's posts with **View** (node `/blog/:slug`) and **Edit in WordPress**
+> (reverse-mapped via the existing `Sync::ID_META` post meta), plus a way to seed
+> a WP draft from a node-authored post so Terraviz can "drive the initial
+> content" and the existing WP→node sync carries the markdown back with a link
+> home. Its own slice.
 
 ### Milestone C — new capability areas ⏳
 

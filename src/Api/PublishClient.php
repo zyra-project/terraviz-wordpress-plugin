@@ -304,6 +304,19 @@ final class PublishClient {
 	}
 
 	/**
+	 * `POST /api/v1/publish/events/:id/tour` — generate an editable tour draft
+	 * from a reviewed event (approved dataset pairings first, else top-scored
+	 * proposed). Returns `201 { tour:{ id, slug, title } }`; a `400 no_datasets`
+	 * (with a field-error envelope) when the event has no visible pairings.
+	 *
+	 * @param string $id Event id.
+	 * @return array<string,mixed>
+	 */
+	public function generate_event_tour( string $id ): array {
+		return $this->send( 'POST', '/api/v1/publish/events/' . rawurlencode( $id ) . '/tour', array() );
+	}
+
+	/**
 	 * `GET /api/v1/publish/feeds` — list every feed connector (enabled and
 	 * paused). The node restricts this to admin/service callers, so the plugin
 	 * gates it at the configure tier. Each item is a full connector object with
@@ -364,6 +377,43 @@ final class PublishClient {
 		}
 
 		return $this->send( 'GET', $path );
+	}
+
+	/**
+	 * `GET /api/v1/publish/media/youtube-channels` — the effective YouTube
+	 * channel allowlist: the built-in curated agency channels (`builtin:true`,
+	 * non-removable) plus this node's custom channels (`builtin:false`). The node
+	 * restricts this to admin/service callers, so the plugin gates it at the
+	 * configure tier.
+	 *
+	 * @return array<string,mixed>
+	 */
+	public function list_media_channels(): array {
+		return $this->send( 'GET', '/api/v1/publish/media/youtube-channels' );
+	}
+
+	/**
+	 * `POST /api/v1/publish/media/youtube-channels` — add a custom channel by
+	 * pasted URL (`{ url }`). The node resolves it to a canonical `UC…` id.
+	 * Returns `201 { channel }`; `400 { errors }` for an unrecognised URL.
+	 *
+	 * @param array<string,mixed> $body `{ url }`.
+	 * @return array<string,mixed>
+	 */
+	public function create_media_channel( array $body ): array {
+		return $this->send( 'POST', '/api/v1/publish/media/youtube-channels', $body );
+	}
+
+	/**
+	 * `DELETE /api/v1/publish/media/youtube-channels/:id` — remove one custom
+	 * channel. Built-in channels aren't in the table, so removing one is a no-op
+	 * `404`.
+	 *
+	 * @param string $id Channel id (`UC…`).
+	 * @return array<string,mixed>
+	 */
+	public function delete_media_channel( string $id ): array {
+		return $this->send( 'DELETE', '/api/v1/publish/media/youtube-channels/' . rawurlencode( $id ) );
 	}
 
 	/**
