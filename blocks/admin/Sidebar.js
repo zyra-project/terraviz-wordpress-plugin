@@ -74,7 +74,7 @@ export const NAV = [
 				key: 'right-now',
 				label: __( 'Right now', 'terraviz' ),
 				tier: 'publish',
-				built: false,
+				built: true,
 			},
 			{
 				key: 'blog',

@@ -192,6 +192,37 @@ export function previewFeed( { kind, url } ) {
 	return apiFetch( { url: `${ feedsUrl() }/preview?${ qs }` } );
 }
 
+const heroUrl = () => `${ root }/featured-hero`;
+
+/**
+ * Read the current "right now" hero override.
+ *
+ * @return {Promise<{hero: ?Object}>} `{ hero: { datasetId, window:{start,end}, headline? } | null }`.
+ */
+export function getFeaturedHero() {
+	return apiFetch( { url: heroUrl() } );
+}
+
+/**
+ * Set (upsert) the hero override. The activation window is mandatory upstream.
+ *
+ * @param {Object} data `{ dataset_id, window:{ start, end }, headline? }`.
+ * @return {Promise<{hero: Object}>} The stored override.
+ */
+export function setFeaturedHero( data ) {
+	return apiFetch( { url: heroUrl(), method: 'PUT', data } );
+}
+
+/**
+ * Clear the hero override. Idempotent (the node returns 204 either way);
+ * apiFetch resolves a 204 to null, and still parses error bodies on failure.
+ *
+ * @return {Promise<*>} Resolves when cleared.
+ */
+export function clearFeaturedHero() {
+	return apiFetch( { url: heroUrl(), method: 'DELETE' } );
+}
+
 /**
  * Normalise an apiFetch rejection into `{ message, errors }`. apiFetch rejects
  * with the parsed JSON error body, so field-validation errors from the node

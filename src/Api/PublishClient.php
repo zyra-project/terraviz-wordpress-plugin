@@ -367,6 +367,44 @@ final class PublishClient {
 	}
 
 	/**
+	 * `GET /api/v1/featured-hero` — read the current "right now" hero override.
+	 *
+	 * This is the *public* read endpoint (the publish route exposes no
+	 * authenticated GET); the service-token headers are harmless on it and it
+	 * keeps the dashboard's hero view on one client. Returns the raw override
+	 * envelope `{ hero: { datasetId, window:{ start, end }, headline? } | null }`.
+	 *
+	 * @return array<string,mixed>
+	 */
+	public function get_featured_hero(): array {
+		return $this->send( 'GET', '/api/v1/featured-hero' );
+	}
+
+	/**
+	 * `PUT /api/v1/publish/featured-hero` — set (upsert) the singleton hero
+	 * override. The activation window is mandatory upstream. Returns
+	 * `{ hero: {…} }` on success; `400 { errors }` for body problems and a
+	 * typed `404 not_found` when the dataset does not exist.
+	 *
+	 * @param array<string,mixed> $body `{ dataset_id, window:{ start, end }, headline? }`.
+	 * @return array<string,mixed>
+	 */
+	public function set_featured_hero( array $body ): array {
+		return $this->send( 'PUT', '/api/v1/publish/featured-hero', $body );
+	}
+
+	/**
+	 * `DELETE /api/v1/publish/featured-hero` — clear the hero override.
+	 * Idempotent: the node returns `204 No Content` whether a pin was set or
+	 * not.
+	 *
+	 * @return array<string,mixed>
+	 */
+	public function clear_featured_hero(): array {
+		return $this->send( 'DELETE', '/api/v1/publish/featured-hero' );
+	}
+
+	/**
 	 * Perform a request and normalise the response.
 	 *
 	 * @param string                   $method HTTP method.
@@ -422,9 +460,18 @@ final class PublishClient {
 		$errors  = ( isset( $data['errors'] ) && is_array( $data['errors'] ) ) ? $data['errors'] : array();
 
 		if ( $code >= 200 && $code < 300 ) {
-			// Every publish endpoint returns a JSON object on success. A 2xx with
-			// an empty or non-JSON body means an intercepting proxy / login page,
-			// not the API — treat it as a failure rather than a false success.
+			// A 204 No Content is a legitimate bodyless success (e.g. the hero
+			// DELETE route). By definition it carries no body, so — unlike a
+			// 200 — it cannot be a login-page interception; accept it with
+			// empty data before the non-JSON guard below.
+			if ( 204 === $code ) {
+				return $this->result( true, $code, array(), '', '' );
+			}
+
+			// Every other publish endpoint returns a JSON object on success. A
+			// 2xx with an empty or non-JSON body means an intercepting proxy /
+			// login page, not the API — treat it as a failure rather than a
+			// false success.
 			if ( ! is_array( $decoded ) ) {
 				return $this->result( false, $code, array(), 'invalid_response', __( 'The node returned a non-JSON response.', 'terraviz' ) );
 			}
