@@ -47,9 +47,12 @@ function DatasetsSection( { boot, intent, onIntentConsumed } ) {
 	const [ busyId, setBusyId ] = useState( null );
 	const [ notice, setNotice ] = useState( null );
 
+	// Fetch the whole catalog once and filter client-side: the status stat tiles
+	// need totals across every bucket (not just the filtered view), and it makes
+	// switching filters instant. listDatasets() already walks all pages.
 	const refresh = useCallback( () => {
 		setLoading( true );
-		listDatasets( filter || undefined )
+		listDatasets()
 			.then( ( res ) =>
 				setDatasets( Array.isArray( res.datasets ) ? res.datasets : [] )
 			)
@@ -60,7 +63,7 @@ function DatasetsSection( { boot, intent, onIntentConsumed } ) {
 				} )
 			)
 			.finally( () => setLoading( false ) );
-	}, [ filter ] );
+	}, [] );
 
 	useEffect( () => {
 		if ( view === 'list' ) {

@@ -235,6 +235,16 @@ No new PHP/REST — pure JS re-arrangement over proven endpoints, **zero upstrea
 risk**. "Recent activity" / "Latest feedback" fill in once Feedback (Milestone
 C) lands.
 
+> **Datasets screen restyled to the mockup (JS-only):** the list now matches the
+> Publisher Portal Datasets scene — subtitle, status count tiles that double as
+> filters, and a table with a thumbnail preview, inline status badge, format, and
+> last-updated, with the lifecycle row actions rendered as uniform understated
+> links (`edit / publish / retract / delete`). The parent fetches the whole
+> catalog once and filters client-side so the tiles show true totals. All fields
+> come from the existing `publisher/datasets` list (`format`, `updated_at`,
+> `thumbnail_url`, `published_at`/`retracted_at`). Where: `blocks/admin/{App,
+> DatasetList}.js`.
+
 > **Follow-up:** the Overview counts currently reuse the paginated
 > `listDatasets()` (all pages) purely to tally draft/published/retracted. A
 > dedicated `publisher/summary` proxy route returning counts + queue depth (or a
