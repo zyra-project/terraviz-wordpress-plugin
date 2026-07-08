@@ -12,6 +12,23 @@ Publishing is an optional, administrator-configured capability that
 authenticates to a Terraviz node with a service token kept **server-side** — it
 never reaches the browser.
 
+## What it looks like
+
+<table>
+<tr>
+<td width="50%"><img src=".wordpress-org/screenshot-1.png" alt="A single Terraviz dataset embedded in a WordPress post: a Sea Surface Temperature poster with a Load interactive globe button, plus title, abstract and tags below."></td>
+<td width="50%"><img src=".wordpress-org/screenshot-3.png" alt="The Catalog block embedded in a post: a grid of Terraviz dataset cards under the heading Explore the Terraviz catalog."></td>
+</tr>
+<tr>
+<td align="center"><em>The <code>Dataset</code> block — an accessible, indexable poster that lazy-loads the live globe on click.</em></td>
+<td align="center"><em>The <code>Catalog</code> block — browse the node's full catalog inline, each card linking to the interactive globe.</em></td>
+</tr>
+</table>
+
+These are the real `.wordpress-org/screenshot-*.png` images the [screenshot
+suite](#development) generates — never hand-made, so the README can't drift from
+what the plugin actually renders.
+
 > **Roadmap & status:** [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
 > — the plugin-local phased plan (what's shipped, what's next). The design
 > *rationale* (the read/publish "seam", the auth model, non-goals) lives in the
