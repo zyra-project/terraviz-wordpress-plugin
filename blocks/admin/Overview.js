@@ -95,13 +95,20 @@ function Section( { title, children } ) {
 
 /**
  * @param {Object}   props
- * @param {Object}   props.boot       Boot config (`canPublish`, `origin`).
- * @param {Object}   props.summary    `{ datasets: {draft,published,retracted,total}, proposedEvents, error }`.
- * @param {boolean}  props.loading    Whether the summary is still loading.
- * @param {Function} props.onNavigate Called with a section key to switch views.
+ * @param {Object}   props.boot         Boot config (`canPublish`, `origin`).
+ * @param {Object}   props.summary      `{ datasets: {draft,published,retracted,total}, proposedEvents, error }`.
+ * @param {boolean}  props.loading      Whether the summary is still loading.
+ * @param {Function} props.onNavigate   Called with a section key to switch views.
+ * @param {Function} props.onNewDataset Opens the Datasets create form directly.
  * @return {JSX.Element} The overview page.
  */
-export default function Overview( { boot, summary, loading, onNavigate } ) {
+export default function Overview( {
+	boot,
+	summary,
+	loading,
+	onNavigate,
+	onNewDataset,
+} ) {
 	if ( loading && ! summary ) {
 		return (
 			<p>
@@ -117,6 +124,9 @@ export default function Overview( { boot, summary, loading, onNavigate } ) {
 		total: 0,
 	};
 	const proposed = summary ? summary.proposedEvents : null;
+	// summary.error is set only when the dataset load failed, so the counts are
+	// all zero and meaningless — show '—' (unavailable) rather than a misleading 0.
+	const dsUnavailable = !! ( summary && summary.error );
 
 	const needs = [];
 	if ( boot.canPublish && proposed > 0 ) {
@@ -181,10 +191,7 @@ export default function Overview( { boot, summary, loading, onNavigate } ) {
 					{ __( "Here's what needs you today.", 'terraviz' ) }
 				</p>
 				<div style={ { display: 'flex', gap: '8px' } }>
-					<Button
-						variant="primary"
-						onClick={ () => onNavigate( 'datasets' ) }
-					>
+					<Button variant="primary" onClick={ onNewDataset }>
 						{ __( 'New dataset', 'terraviz' ) }
 					</Button>
 					{ boot.canPublish && (
@@ -235,15 +242,15 @@ export default function Overview( { boot, summary, loading, onNavigate } ) {
 				>
 					<StatTile
 						label={ __( 'Published datasets', 'terraviz' ) }
-						value={ ds.published }
+						value={ dsUnavailable ? '—' : ds.published }
 					/>
 					<StatTile
 						label={ __( 'Drafts', 'terraviz' ) }
-						value={ ds.draft }
+						value={ dsUnavailable ? '—' : ds.draft }
 					/>
 					<StatTile
 						label={ __( 'Retracted', 'terraviz' ) }
-						value={ ds.retracted }
+						value={ dsUnavailable ? '—' : ds.retracted }
 					/>
 					{ boot.canPublish && (
 						<StatTile

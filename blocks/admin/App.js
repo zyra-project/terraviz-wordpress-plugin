@@ -32,8 +32,13 @@ import {
 	normalizeError,
 } from './api';
 
-function DatasetsSection( { boot } ) {
-	const [ view, setView ] = useState( 'list' );
+function DatasetsSection( { boot, intent, onIntentConsumed } ) {
+	// A one-shot `intent` of 'create' (from Overview's "New dataset" CTA) opens
+	// the create form directly; it's consumed on mount so a later plain
+	// navigation back to Datasets still defaults to the list.
+	const [ view, setView ] = useState(
+		intent === 'create' ? 'create' : 'list'
+	);
 	const [ filter, setFilter ] = useState( '' );
 	const [ datasets, setDatasets ] = useState( [] );
 	const [ loading, setLoading ] = useState( false );
@@ -60,6 +65,16 @@ function DatasetsSection( { boot } ) {
 			refresh();
 		}
 	}, [ view, refresh ] );
+
+	useEffect( () => {
+		if ( intent ) {
+			onIntentConsumed();
+		}
+		// Mount-only: the create intent is read by the initial view state above;
+		// clear it once so it doesn't reopen on a later visit. Deps omitted
+		// intentionally.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [] );
 
 	const runAction = ( fn, id, confirmText ) => {
 		// eslint-disable-next-line no-alert -- a native confirm is acceptable for a destructive wp-admin action.
@@ -323,8 +338,20 @@ function ComingSoon( { sectionKey } ) {
 
 export default function App( { boot } ) {
 	const [ section, setSection ] = useState( 'overview' );
+	const [ datasetsIntent, setDatasetsIntent ] = useState( null );
 	const [ summary, setSummary ] = useState( null );
 	const [ summaryLoading, setSummaryLoading ] = useState( true );
+
+	// Overview's "New dataset" CTA: jump to the Datasets section AND open its
+	// create form, rather than just landing on the list.
+	const openNewDataset = useCallback( () => {
+		setDatasetsIntent( 'create' );
+		setSection( 'datasets' );
+	}, [] );
+	const clearDatasetsIntent = useCallback(
+		() => setDatasetsIntent( null ),
+		[]
+	);
 
 	// Build the Overview figures from data the plugin already has: the caller's
 	// dataset list (counted by derived lifecycle status) and the proposed-events
@@ -423,10 +450,17 @@ export default function App( { boot } ) {
 						summary={ summary }
 						loading={ summaryLoading }
 						onNavigate={ setSection }
+						onNewDataset={ openNewDataset }
 					/>
 				);
 			case 'datasets':
-				return <DatasetsSection boot={ boot } />;
+				return (
+					<DatasetsSection
+						boot={ boot }
+						intent={ datasetsIntent }
+						onIntentConsumed={ clearDatasetsIntent }
+					/>
+				);
 			case 'events':
 				return <EventsSection />;
 			case 'feeds':
