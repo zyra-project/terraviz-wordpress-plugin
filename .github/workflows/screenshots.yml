@@ -242,8 +242,17 @@ jobs:
           _Opened by `GITHUB_TOKEN`, so required status checks may not run automatically on this PR (GitHub loop-prevention). Push an empty commit or re-run them if branch protection requires them._
           EOF
 
-          gh pr create \
+          # Opening the PR needs "Allow GitHub Actions to create and approve pull
+          # requests" (Settings → Actions → General). If that's off, gh fails —
+          # the branch is already pushed, so fall back to printing the compare
+          # link instead of failing the job.
+          if gh pr create \
             --base "${GITHUB_REF_NAME}" \
             --head "$branch" \
             --title "Refresh screenshot baselines (run ${GITHUB_RUN_ID})" \
-            --body-file "${RUNNER_TEMP}/pr-body.md"
+            --body-file "${RUNNER_TEMP}/pr-body.md"; then
+            echo "Opened a baseline-refresh PR."
+          else
+            echo "::warning::Pushed ${branch}, but could not open the PR automatically. Enable 'Allow GitHub Actions to create and approve pull requests' (Settings → Actions → General) for one-click PRs."
+            echo "Open one here: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/${GITHUB_REF_NAME}...${branch}?expand=1"
+          fi

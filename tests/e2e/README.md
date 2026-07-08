@@ -101,9 +101,12 @@ so baselines land through a PR:
   token, so the read-only capture path is never affected — commits the
   regenerated baselines and **opens a PR automatically**. (The same run also
   uploads a `refreshed-baselines` artifact if you'd rather commit them by hand.)
-  Because the auto-PR is opened by `GITHUB_TOKEN`, its own checks may not
-  re-trigger; push an empty commit or re-run them if branch protection requires
-  it.
+  Two setup notes: opening the PR requires **Settings → Actions → General →
+  "Allow GitHub Actions to create and approve pull requests"** to be enabled — if
+  it's off, the job still pushes the baseline branch and prints a compare link
+  (open the PR with one click). And because the PR is authored by `GITHUB_TOKEN`,
+  its own checks may not re-trigger; push an empty commit or re-run them if branch
+  protection requires it.
 
 Either way the committed baselines are what `toHaveScreenshot` diffs against;
 review the images in the PR as you would any change.
