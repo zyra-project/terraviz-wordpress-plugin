@@ -144,6 +144,17 @@ Terraviz-grounded posts (pre-seeds a dataset/tour block + the opt-in) so authors
 get the grounding scaffold. **Deferred, optional** — not required for the flow
 above; tracked as a later enhancement so the core list + seed ship first.
 
+### 4.5 Media in the Blog area
+
+Blog media is **WordPress-native**: the post's **featured image** and the media
+library are the picker. The plugin adds *no* node-side media chooser for blog
+posts. When a post is **grounded in an event**, the node already carries that
+event's `image_url` into the blog stub's lead figure automatically (upstream
+generation), so a grounded post inherits its image with no extra step.
+
+Node media **suggestions** (suggested videos / images) are a distinct
+capability that belongs on the **Event review** screen, not here — see §9.
+
 ---
 
 ## 5. Tiers, security, degradation
@@ -184,6 +195,9 @@ useful; slices 2–3 layer the node→WP authoring loop.
   §6/§9). The stub stays a grounded pointer home.
 - Auto-publishing: seeding creates a **draft**; nothing publishes without an
   explicit WP publish.
+- A node-side media picker/suggestion UI in the Blog area — blog imagery is
+  WordPress-native (featured image + media library). Node media *suggestions*
+  live on Event review (§9).
 
 ---
 
@@ -195,3 +209,49 @@ useful; slices 2–3 layer the node→WP authoring loop.
    WordPress post", or also a plain read view? (Plan: seed + View.)
 3. **Template** (§4.4) — worth a dedicated slice, or fold grounding guidance
    into the seeded post's starter content?
+
+---
+
+## 9. Related work — media suggestions live on Event review (not Blog)
+
+This came up while scoping Blog ("where do media suggestions fit — YouTube
+channels under Feeds, related images for the hero?"). They're a distinct,
+contract-backed capability that belongs on the **Event review** screen, governed
+by the Feeds → **Media channels** allowlist already shipped (#32). Captured here
+so it isn't mistaken for Blog work; it gets its own slice/PR.
+
+### The engine (verified upstream; privileged / publish-tier)
+
+| Endpoint | Returns | Role |
+|---|---|---|
+| `GET media/youtube-search?q=` | `{ videos:[{videoId,title,channelId,channelName}] }` | video candidates **filtered to the allowlisted channels** (the payoff of the Media channels tab); KV-cached, degrades to `{videos:[]}` without a key |
+| `GET media/nhc-storms` | `{ activeStorms:[{id,name}] }` | a forecast-cone suggestion matched to a storm event by name |
+| `POST events/:id/image` `{ contentType, dataBase64 }` | sets the event `image_url` | upload the org's own photo (raster only, ≤4 MB) — the third path next to the feed `og:image` and the suggested picks |
+
+### Placement — a "Suggested media" pane on the event-review screen
+
+Video cards from `youtube-search` (seeded by the event title), an NHC cone card
+from `nhc-storms` for storm events, and an image row (current image · suggested
+picks · upload) that writes the chosen `imageUrl` / `videoEmbedUrl` through the
+**existing event-review edit path**. Sits beside the "Generate tour" button
+(#32).
+
+### Why it's an Event feature — and how it still reaches Blog + hero
+
+- The event `image_url` **flows downstream automatically**: the node uses it as
+  the blog lead figure and the generated tour's intro/thumbnail. Choosing an
+  event's media therefore enriches the derived blog post and tour **without** a
+  Blog-side picker.
+- The **hero** ("Right now") pins a *dataset*; its card image is that dataset's
+  thumbnail. There is **no image-suggestion endpoint for the hero** in the
+  current contracts — "suggest a variety of related images for the hero" is
+  **net-new upstream work** (a suggestion endpoint + plugin UI), tracked as a
+  wishlist item, not buildable today.
+
+### Plugin work when scheduled (its own PR)
+
+Thin `PublishClient` reads (`search_youtube_media`, `list_nhc_storms`) + an
+`events/:id/image` upload proxy; capability-gated
+`terraviz/v1/publisher/media/*` routes (publish-tier, consistent with event
+review); and the Suggested-media pane in `blocks/admin/EventReview.js`.
+Contracts already located upstream.
