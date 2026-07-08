@@ -75,7 +75,9 @@ function NeedsCard( { title, detail, actionLabel, onAction } ) {
 function Section( { title, children } ) {
 	return (
 		<section style={ { marginTop: '28px' } }>
-			<h2
+			{ /* h3: subordinate to App.js's h2 page title (which sits under the
+			   wp-admin h1), keeping the heading hierarchy correct. */ }
+			<h3
 				style={ {
 					fontSize: '13px',
 					textTransform: 'uppercase',
@@ -85,7 +87,7 @@ function Section( { title, children } ) {
 				} }
 			>
 				{ title }
-			</h2>
+			</h3>
 			{ children }
 		</section>
 	);

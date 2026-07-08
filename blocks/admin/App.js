@@ -331,11 +331,18 @@ export default function App( { boot } ) {
 	// queue depth. Both failures degrade to a partial card rather than blocking.
 	const loadSummary = useCallback( () => {
 		setSummaryLoading( true );
+		// Preserve the specific failure message (e.g. listDatasets's localized
+		// "too many pages, please reload" error) rather than discarding it for a
+		// generic one. Assigned in the catch, which settles before Promise.all.
+		let datasetsError = null;
 		const datasetsP = listDatasets()
 			.then( ( res ) =>
 				Array.isArray( res.datasets ) ? res.datasets : []
 			)
-			.catch( () => null );
+			.catch( ( e ) => {
+				datasetsError = normalizeError( e ).message;
+				return null;
+			} );
 		const eventsP = boot.canPublish
 			? listEvents( 'proposed' )
 					.then( ( res ) =>
@@ -354,10 +361,12 @@ export default function App( { boot } ) {
 				};
 				let error = null;
 				if ( datasets === null ) {
-					error = __(
-						'Could not load your datasets — some figures may be unavailable.',
-						'terraviz'
-					);
+					error =
+						datasetsError ||
+						__(
+							'Could not load your datasets — some figures may be unavailable.',
+							'terraviz'
+						);
 				} else {
 					datasets.forEach( ( d ) => {
 						counts[ deriveStatus( d ) ] += 1;

@@ -234,7 +234,13 @@ export default function Sidebar( { active, boot, badges = {}, onSelect } ) {
 								{ section.group }
 							</div>
 						) }
-						<ul style={ { margin: 0, listStyle: 'none' } }>
+						<ul
+							style={ {
+								margin: 0,
+								padding: 0,
+								listStyle: 'none',
+							} }
+						>
 							{ items.map( ( item ) => {
 								const isActive = item.key === active;
 								const badge = badges[ item.key ];
