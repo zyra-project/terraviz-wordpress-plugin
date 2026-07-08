@@ -28,7 +28,7 @@ const CASES = [
 ];
 
 for ( const testCase of CASES ) {
-	test( `block: ${ testCase.key }`, async ( { page } ) => {
+	test( `block: ${ testCase.key }`, async ( { page }, testInfo ) => {
 		const seeded = manifest[ testCase.key ];
 		expect( seeded, `page for "${ testCase.key }" was seeded` ).toBeTruthy();
 
@@ -40,6 +40,13 @@ for ( const testCase of CASES ) {
 		// Let the SSR thumbnails (served same-origin by the fixture mu-plugin) paint.
 		await page.waitForLoadState( 'networkidle', { timeout: 8000 } ).catch( () => {} );
 
-		await snap( figure, `block-${ testCase.key }`, expect, { wporg: testCase.wporg } );
+		// The same specs run under both the desktop (`frontend`) and phone-width
+		// (`frontend-mobile`) projects. Mobile shots get a `-mobile` baseline and
+		// skip the WordPress.org listing images (those stay the desktop set).
+		const isMobile = testInfo.project.name === 'frontend-mobile';
+		const name = isMobile ? `block-${ testCase.key }-mobile` : `block-${ testCase.key }`;
+		const opts = isMobile ? {} : { wporg: testCase.wporg };
+
+		await snap( figure, name, expect, opts );
 	} );
 }

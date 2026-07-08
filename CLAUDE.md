@@ -159,8 +159,9 @@ hand; they're excluded from PHPCS.
   the node is unreachable.
 - `tests/e2e/` is the **screenshot / visual-regression suite** (Playwright
   driving a real `wp-env` WordPress, so it needs Docker; `npm run screenshots`).
-  It captures every block + the wp-admin dashboard views against **offline
-  fixtures**: a gated mu-plugin (`tests/e2e/mu-plugins/`, inert unless the
+  It captures every block at two viewports (`frontend` desktop + `frontend-mobile`
+  phone; mobile shots are suffixed `-mobile` and skip the WP.org images) plus the
+  wp-admin dashboard views (desktop only) against **offline fixtures**: a gated mu-plugin (`tests/e2e/mu-plugins/`, inert unless the
   `TERRAVIZ_E2E` constant is set) short-circuits the public read API, and its
   fixture JSON lives **beside** the mu-plugin (`.../mu-plugins/fixtures/`) so the
   single wp-env mapping mounts it into the container. Baselines

@@ -5,6 +5,13 @@ every block front end plus the wp-admin dashboard views. Runs in CI as the
 [`Screenshots`](../../.github/workflows/screenshots.yml) workflow — kept out of
 the core `ci.yml` gate so a screenshot flake never blocks a merge.
 
+The blocks are shot at two viewports (Playwright projects): `frontend`
+(desktop, 1280px) and `frontend-mobile` (phone, 390px) — the visitor-facing
+surface, where the responsive SSR fallback has to reflow. Mobile shots are
+suffixed `-mobile` (e.g. `block-catalog-mobile.png`) and skip the WordPress.org
+listing images. The wp-admin views (`admin` project) are desktop-only — that
+surface's responsiveness is WordPress core's, not the plugin's.
+
 ## What it produces
 
 Each captured shot fans out to up to three places (see `helpers/shots.js`):
@@ -20,8 +27,9 @@ Each captured shot fans out to up to three places (see `helpers/shots.js`):
 
 After the capture, `visual-report.js` (`npm run visual-report`) diffs each fresh
 gallery actual against its committed baseline with `pixelmatch` and renders a
-**"Visual report" comment** on the PR: a per-scene table of what changed (percent
-+ changed-pixel count), which scenes are new/uncaptured, and a red-highlighted
+**"Visual report" comment** on the PR: a per-scene, per-viewport table of what
+changed (percent + changed-pixel count), which scenes are new/uncaptured, and a
+red-highlighted
 `<name>.diff.png` overlay dropped into the gallery for every changed scene. It
 runs even when the `toHaveScreenshot` gate failed (`snap()` writes the gallery
 actual *before* asserting) and never fails a build itself — it's a **visual-review

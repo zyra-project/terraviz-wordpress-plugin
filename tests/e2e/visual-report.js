@@ -43,16 +43,17 @@ const MARKER = '<!-- terraviz-visual-report -->';
 // VISUAL_REPORT_THRESHOLD.
 const DEFAULT_THRESHOLD = 0.001;
 
-// Human labels + surface for the known scenes. Unknown scenes (e.g. a newly
-// added spec) fall back to a derived label; see sceneMeta().
+// Human labels for the known scenes, keyed by their base name (without any
+// `-mobile` viewport suffix). Unknown scenes (e.g. a newly added spec) fall back
+// to a derived label; see sceneMeta().
 const SCENES = {
-	'block-dataset': { label: 'Dataset block', surface: 'Front end' },
-	'block-tour': { label: 'Tour block', surface: 'Front end' },
-	'block-catalog': { label: 'Catalog block', surface: 'Front end' },
-	'block-hero': { label: 'Right-Now Hero block', surface: 'Front end' },
-	'block-related': { label: 'Related Datasets rail', surface: 'Front end' },
-	'dashboard-publisher': { label: 'Publisher dashboard', surface: 'wp-admin' },
-	'dashboard-settings': { label: 'Settings screen', surface: 'wp-admin' },
+	'block-dataset': 'Dataset block',
+	'block-tour': 'Tour block',
+	'block-catalog': 'Catalog block',
+	'block-hero': 'Right-Now Hero block',
+	'block-related': 'Related Datasets rail',
+	'dashboard-publisher': 'Publisher dashboard',
+	'dashboard-settings': 'Settings screen',
 };
 
 function parseThreshold() {
@@ -88,12 +89,12 @@ function sanitize( str ) {
 }
 
 function sceneMeta( name ) {
-	if ( SCENES[ name ] ) {
-		return SCENES[ name ];
-	}
-	const surface = name.startsWith( 'dashboard-' ) ? 'wp-admin' : 'Front end';
-	const label = name.replace( /[-_]/g, ' ' ).replace( /\b\w/g, ( c ) => c.toUpperCase() );
-	return { label, surface };
+	const mobile = name.endsWith( '-mobile' );
+	const base = mobile ? name.slice( 0, -'-mobile'.length ) : name;
+	const label =
+		SCENES[ base ] ||
+		base.replace( /[-_]/g, ' ' ).replace( /\b\w/g, ( c ) => c.toUpperCase() );
+	return { label, viewport: mobile ? 'mobile' : 'desktop' };
 }
 
 function listPngs( dir ) {
@@ -119,7 +120,7 @@ function compareScene( name, threshold ) {
 	const base = {
 		name,
 		label: sanitize( meta.label ),
-		surface: sanitize( meta.surface ),
+		viewport: sanitize( meta.viewport ),
 	};
 
 	if ( ! fs.existsSync( actualPath ) ) {
@@ -208,7 +209,7 @@ function changeCell( s ) {
 }
 
 function buildMarkdown( scenes, threshold ) {
-	const surfaces = [ ...new Set( scenes.map( ( s ) => s.surface ) ) ];
+	const viewports = [ ...new Set( scenes.map( ( s ) => s.viewport ) ) ];
 	const problems = scenes.filter( ( s ) => s.status !== 'unchanged' );
 	const changed = scenes.filter( ( s ) => s.status === 'changed' || s.status === 'resized' );
 	const created = scenes.filter( ( s ) => s.status === 'new' );
@@ -220,8 +221,8 @@ function buildMarkdown( scenes, threshold ) {
 	lines.push( '' );
 
 	const summary =
-		`**${ scenes.length }** shot(s) · ${ surfaces.length } surface(s) ` +
-		`(${ surfaces.join( ', ' ) }) · **${ problems.length } with changes**`;
+		`**${ scenes.length }** shot(s) · ${ viewports.length } viewport(s) ` +
+		`(${ viewports.join( ', ' ) }) · **${ problems.length } with changes**`;
 	lines.push( summary );
 	lines.push( '' );
 	lines.push(
@@ -234,10 +235,10 @@ function buildMarkdown( scenes, threshold ) {
 	if ( problems.length === 0 ) {
 		lines.push( `All ${ scenes.length } shot(s) match their baselines. ✅` );
 	} else {
-		lines.push( '| Scene | Surface | Change |' );
+		lines.push( '| Scene | Viewport | Change |' );
 		lines.push( '|---|---|---|' );
 		for ( const s of problems ) {
-			lines.push( `| ${ s.label } | ${ s.surface } | ${ changeCell( s ) } |` );
+			lines.push( `| ${ s.label } | ${ s.viewport } | ${ changeCell( s ) } |` );
 		}
 	}
 	lines.push( '' );
@@ -245,11 +246,11 @@ function buildMarkdown( scenes, threshold ) {
 	// The full list, collapsed — every scene, changed or not.
 	lines.push( `<details><summary>All ${ scenes.length } shot(s)</summary>` );
 	lines.push( '' );
-	lines.push( '| Scene | Surface | Change |' );
+	lines.push( '| Scene | Viewport | Change |' );
 	lines.push( '|---|---|---|' );
 	for ( const s of scenes ) {
 		const cell = s.status === 'unchanged' ? '—' : changeCell( s );
-		lines.push( `| ${ s.label } | ${ s.surface } | ${ cell } |` );
+		lines.push( `| ${ s.label } | ${ s.viewport } | ${ cell } |` );
 	}
 	lines.push( '' );
 	lines.push( '</details>' );
