@@ -122,6 +122,7 @@ final class Dashboard {
 			'canConfigure'         => Capabilities::can_configure(),
 			'credentialConfigured' => Credential::configured(),
 			'settingsUrl'          => admin_url( 'options-general.php?page=terraviz-settings' ),
+			'newPostUrl'           => admin_url( 'post-new.php' ),
 		);
 	}
 

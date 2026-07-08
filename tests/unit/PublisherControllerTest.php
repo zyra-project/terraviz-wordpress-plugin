@@ -1068,4 +1068,90 @@ class PublisherControllerTest extends WP_UnitTestCase {
 		);
 		$this->assertSame( array(), $this->controller->normalize_media_channel_body( array( 'url' => array( 'a' ) ) ) );
 	}
+
+	public function test_blog_route_requires_publish_tier(): void {
+		$editor = self::factory()->user->create( array( 'role' => 'editor' ) );
+		$author = self::factory()->user->create( array( 'role' => 'author' ) );
+
+		wp_set_current_user( $editor );
+		$this->assertTrue( $this->controller->require_publish() );
+
+		wp_set_current_user( $author );
+		$this->assertFalse( $this->controller->require_publish() );
+	}
+
+	public function test_list_blog_forwards_get_with_status(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['GET'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode( array( 'posts' => array( array( 'id' => 'B1' ) ) ) ),
+		);
+
+		$request = new WP_REST_Request( 'GET' );
+		$request->set_param( 'status', 'draft' );
+		$response = $this->controller->list_blog( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertStringContainsString( '/api/v1/publish/blog?status=draft', end( $this->sent_urls ) );
+	}
+
+	public function test_list_blog_decorates_wp_edit_url_for_linked_post(): void {
+		$this->configure_credential();
+		$editor = self::factory()->user->create( array( 'role' => 'editor' ) );
+		wp_set_current_user( $editor );
+
+		// A WP post linked to node blog post B1 via the sync's id meta.
+		$wp_id = self::factory()->post->create(
+			array(
+				'post_title'  => 'Linked',
+				'post_status' => 'publish',
+				'post_author' => $editor,
+			)
+		);
+		update_post_meta( $wp_id, \Terraviz\Blog\Sync::ID_META, 'B1' );
+
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+		$this->http_by_method['GET'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode(
+				array(
+					'posts' => array(
+						array(
+							'id'   => 'B1',
+							'slug' => 'linked',
+						),
+						array(
+							'id'   => 'B2',
+							'slug' => 'unlinked',
+						),
+					),
+				)
+			),
+		);
+
+		$response = $this->controller->list_blog( new WP_REST_Request( 'GET' ) );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$posts = $response->get_data()['posts'];
+		// The linked post carries an editor URL pointing at its WP post; the
+		// unlinked one is explicitly null.
+		$this->assertNotEmpty( $posts[0]['wp_edit_url'] );
+		$this->assertStringContainsString( (string) $wp_id, $posts[0]['wp_edit_url'] );
+		$this->assertNull( $posts[1]['wp_edit_url'] );
+	}
+
+	public function test_list_blog_without_credential_returns_409(): void {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+
+		$response = $this->controller->list_blog( new WP_REST_Request( 'GET' ) );
+
+		$this->assertSame( 409, $response->get_status() );
+		$this->assertSame( 'credential_missing', $response->get_data()['error'] );
+	}
 }

@@ -10,6 +10,7 @@ declare( strict_types = 1 );
 namespace Terraviz\Rest;
 
 use Terraviz\Api\PublishClient;
+use Terraviz\Blog\Sync;
 use Terraviz\Support\Capabilities;
 use Terraviz\Support\Credential;
 use Terraviz\Support\Options;
@@ -52,6 +53,7 @@ final class PublisherController {
 	private const FEEDS_BASE  = '/publisher/feeds';
 	private const HERO_BASE   = '/publisher/featured-hero';
 	private const MEDIA_BASE  = '/publisher/media/youtube-channels';
+	private const BLOG_BASE   = '/publisher/blog';
 
 	/**
 	 * URL-segment pattern for a dataset id (ULID or slug).
@@ -366,6 +368,25 @@ final class PublisherController {
 				'methods'             => 'DELETE',
 				'callback'            => array( $this, 'delete_media_channel' ),
 				'permission_callback' => array( $this, 'require_configure' ),
+			)
+		);
+
+		// Blog list (read). Authoring stays in WordPress (the WP→node sync is the
+		// bridge), so this is read-only here; the sidebar tab is publish-tier.
+		register_rest_route(
+			self::NAMESPACE,
+			self::BLOG_BASE,
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'list_blog' ),
+				'permission_callback' => array( $this, 'require_publish' ),
+				'args'                => array(
+					'status' => array(
+						'type'     => 'string',
+						'required' => false,
+						'enum'     => array( 'draft', 'published' ),
+					),
+				),
 			)
 		);
 	}
@@ -697,6 +718,78 @@ final class PublisherController {
 		}
 
 		return $this->respond( $client->delete_media_channel( (string) $request->get_param( 'id' ) ) );
+	}
+
+	/**
+	 * GET the blog list, each post decorated with `wp_edit_url` when a WordPress
+	 * post is linked to it. Blog authoring lives in WordPress; this read view
+	 * surfaces the node's posts and points each back at its WP editor (via the
+	 * `Sync::ID_META` link the WP→node sync already maintains).
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function list_blog( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		$query  = array();
+		$status = $request->get_param( 'status' );
+		if ( null !== $status && '' !== (string) $status ) {
+			$query['status'] = (string) $status;
+		}
+
+		$result = $client->list_blog( $query );
+
+		if ( $result['ok'] && isset( $result['data']['posts'] ) && is_array( $result['data']['posts'] ) ) {
+			$edit_map = $this->wp_blog_edit_map();
+			foreach ( $result['data']['posts'] as &$post ) {
+				if ( is_array( $post ) && isset( $post['id'] ) ) {
+					$node_id             = (string) $post['id'];
+					$post['wp_edit_url'] = $edit_map[ $node_id ] ?? null;
+				}
+			}
+			unset( $post );
+		}
+
+		return $this->respond( $result );
+	}
+
+	/**
+	 * Build a map of Terraviz blog-post id → the WP post-editor URL for the
+	 * WordPress post linked to it (via {@see Sync::ID_META}). Only posts the
+	 * current user may edit yield a URL; others map to null via the caller's
+	 * `??`. Bounded by the number of linked posts on the site.
+	 *
+	 * @return array<string,string>
+	 */
+	private function wp_blog_edit_map(): array {
+		$map = array();
+
+		$linked = get_posts(
+			array(
+				'post_type'   => 'post',
+				'post_status' => 'any',
+				'numberposts' => 500, // phpcs:ignore WordPress.WP.PostsPerPage.posts_per_page_numberposts -- a one-time admin lookup of Terraviz-linked posts, bounded well above any realistic count.
+				'fields'      => 'ids',
+				'meta_key'    => Sync::ID_META, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- bounded admin lookup to link node posts to their WP editor.
+			)
+		);
+
+		foreach ( $linked as $wp_id ) {
+			$node_id = (string) get_post_meta( (int) $wp_id, Sync::ID_META, true );
+			if ( '' === $node_id ) {
+				continue;
+			}
+			$edit_url = get_edit_post_link( (int) $wp_id, 'raw' );
+			if ( $edit_url ) {
+				$map[ $node_id ] = $edit_url;
+			}
+		}
+
+		return $map;
 	}
 
 	/**

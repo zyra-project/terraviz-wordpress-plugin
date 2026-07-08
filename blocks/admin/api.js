@@ -238,6 +238,23 @@ export function generateEventTour( id ) {
 	return apiFetch( { url: eventTourUrl( id ), method: 'POST' } );
 }
 
+const blogUrl = () => `${ root }/blog`;
+
+/**
+ * List blog posts (drafts included), newest-updated first. Each post is
+ * decorated server-side with `wp_edit_url` when a WordPress post is linked to
+ * it.
+ *
+ * @param {string} [status] Optional filter ('draft'|'published').
+ * @return {Promise<{posts: Array}>} The posts.
+ */
+export function listBlog( status ) {
+	const url = status
+		? `${ blogUrl() }?status=${ encodeURIComponent( status ) }`
+		: blogUrl();
+	return apiFetch( { url } );
+}
+
 const heroUrl = () => `${ root }/featured-hero`;
 
 /**

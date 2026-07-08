@@ -212,6 +212,23 @@ final class PublishClient {
 	}
 
 	/**
+	 * `GET /api/v1/publish/blog` — list blog posts (drafts included),
+	 * newest-updated first; `status` narrows to `draft|published`. Any signed-in
+	 * publisher may read the authoring list.
+	 *
+	 * @param array<string,string> $query Optional `status`.
+	 * @return array<string,mixed>
+	 */
+	public function list_blog( array $query = array() ): array {
+		$path = '/api/v1/publish/blog';
+		if ( ! empty( $query ) ) {
+			$path .= '?' . http_build_query( $query );
+		}
+
+		return $this->send( 'GET', $path );
+	}
+
+	/**
 	 * `POST /api/v1/publish/blog` — create a blog-post stub (born draft).
 	 *
 	 * @param array<string,mixed> $body `{ title, bodyMd, summary?, datasetIds?, tourId?, eventId? }`.

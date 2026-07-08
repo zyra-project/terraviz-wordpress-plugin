@@ -335,6 +335,29 @@ class PublishClientTest extends WP_UnitTestCase {
 		$this->assertSame( '{}', $this->captured_args['body'] );
 	}
 
+	public function test_list_blog_gets_collection_with_status(): void {
+		$this->canned = $this->respond(
+			200,
+			(string) wp_json_encode( array( 'posts' => array( array( 'id' => 'B1' ) ) ) )
+		);
+
+		$result = $this->client()->list_blog( array( 'status' => 'published' ) );
+
+		$this->assertTrue( $result['ok'] );
+		$this->assertSame( 'GET', $this->captured_args['method'] );
+		$this->assertStringContainsString( '/api/v1/publish/blog?', $this->captured_url );
+		$this->assertStringContainsString( 'status=published', $this->captured_url );
+		$this->assertSame( 'B1', $result['data']['posts'][0]['id'] );
+	}
+
+	public function test_list_blog_omits_empty_query(): void {
+		$this->canned = $this->respond( 200, (string) wp_json_encode( array( 'posts' => array() ) ) );
+
+		$this->client()->list_blog();
+
+		$this->assertStringEndsWith( '/api/v1/publish/blog', $this->captured_url );
+	}
+
 	public function test_create_blog_posts_to_collection(): void {
 		$this->canned = $this->respond(
 			201,

@@ -175,10 +175,10 @@ capability that belongs on the **Event review** screen, not here — see §9.
 
 ## 6. Slices (ship in order)
 
-1. **Blog list (read) + reverse map** — `list_blog` client + `GET
+1. ✅ **Blog list (read) + reverse map** — `list_blog` client + `GET
    /publisher/blog` (decorated with `wp_edit_url`) + `Blog.js` (tiles, table,
    View, Edit-in-WordPress) + wire the sidebar tab to built. New-post → WP
-   editor. *No node writes; lowest risk.*
+   editor. *No node writes; lowest risk.* Shipped in this PR.
 2. **Seed WP post from a node post** — `POST /publisher/blog/:id/import-to-wp`
    + the "Create WordPress post" action + md→content conversion (v1).
 3. **Blog post template** (optional) — starter pattern/template.
