@@ -12,6 +12,23 @@ Publishing is an optional, administrator-configured capability that
 authenticates to a Terraviz node with a service token kept **server-side** — it
 never reaches the browser.
 
+## What it looks like
+
+<table>
+<tr>
+<td width="50%"><img src=".wordpress-org/screenshot-1.png" alt="A single Terraviz dataset embedded in a WordPress post: a Sea Surface Temperature poster with a Load interactive globe button, plus title, abstract and tags below."></td>
+<td width="50%"><img src=".wordpress-org/screenshot-3.png" alt="The Catalog block embedded in a post: a grid of Terraviz dataset cards under the heading Explore the Terraviz catalog."></td>
+</tr>
+<tr>
+<td align="center"><em>The <code>Dataset</code> block — an accessible, indexable poster that lazy-loads the live globe on click.</em></td>
+<td align="center"><em>The <code>Catalog</code> block — browse the node's full catalog inline, each card linking to the interactive globe.</em></td>
+</tr>
+</table>
+
+These are the real `.wordpress-org/screenshot-*.png` images the [screenshot
+suite](#development) generates — never hand-made, so the README can't drift from
+what the plugin actually renders.
+
 > **Roadmap & status:** [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
 > — the plugin-local phased plan (what's shipped, what's next). The design
 > *rationale* (the read/publish "seam", the auth model, non-goals) lives in the
@@ -106,14 +123,19 @@ composer run test       # PHPUnit (needs the WP test suite; see bin/install-wp-t
 # Screenshots / visual regression (Playwright + wp-env; needs Docker)
 npm run screenshots         # capture block + dashboard shots, diff vs baselines
 npm run screenshots:update  # regenerate baselines + WordPress.org listing images
+npm run visual-report       # diff gallery vs baselines → the PR-comment report
 ```
 
 The screenshot suite (`tests/e2e/`) drives a real WordPress with offline
 fixtures and captures every block and admin view — producing a gallery
 artifact, committed visual-regression baselines, and the numbered
-`.wordpress-org/screenshot-N.png` images for the WordPress.org listing. It runs
-in CI as the [`Screenshots`](.github/workflows/screenshots.yml) workflow (kept
-out of the core gate). See [`tests/e2e/README.md`](tests/e2e/README.md).
+`.wordpress-org/screenshot-N.png` images for the WordPress.org listing. On a PR
+it also posts a **"Visual report" comment** — a per-scene table of what changed
+(percent + changed pixels) with red-highlighted diff overlays in the gallery. It
+runs in CI as the [`Screenshots`](.github/workflows/screenshots.yml) workflow
+(kept out of the core gate; the comment is posted fork-safely by
+[`screenshots-comment.yml`](.github/workflows/screenshots-comment.yml)). See
+[`tests/e2e/README.md`](tests/e2e/README.md).
 
 Requires WordPress ≥ 6.1 and PHP ≥ 7.4. Licensed GPLv2-or-later.
 

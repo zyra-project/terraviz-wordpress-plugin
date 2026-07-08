@@ -94,6 +94,37 @@ jobs:
             npm run screenshots
           fi
 
+      # Diff the fresh actuals against the committed baselines and render the PR
+      # comment body. Runs even when the capture step failed the gate (snap()
+      # writes the gallery actual before asserting), and its own failure never
+      # reds the run. Writes .diff.png overlays into the gallery *before* it is
+      # uploaded, plus visual-report.{md,json}.
+      - name: Generate visual report
+        if: ${{ always() && github.event.inputs.update_baselines != 'true' }}
+        continue-on-error: true
+        run: npm run visual-report
+
+      # Stash the PR number so the write-scoped workflow_run job knows where to
+      # post (workflow_run.pull_requests is unreliable for forks).
+      - name: Record PR number
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        run: |
+          mkdir -p tests/e2e/.artifacts
+          echo "${{ github.event.pull_request.number }}" > tests/e2e/.artifacts/pr.txt
+
+      # The comment body + metrics, consumed by screenshots-comment.yml. Carries
+      # no code — just the Markdown, the JSON metrics, and the PR number.
+      - name: Upload visual report
+        if: ${{ always() && github.event.inputs.update_baselines != 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-report
+          path: |
+            tests/e2e/.artifacts/visual-report.md
+            tests/e2e/.artifacts/visual-report.json
+            tests/e2e/.artifacts/pr.txt
+          if-no-files-found: warn
+
       - name: Upload screenshot gallery
         if: always()
         uses: actions/upload-artifact@v4
