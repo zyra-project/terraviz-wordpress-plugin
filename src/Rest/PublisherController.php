@@ -237,8 +237,10 @@ final class PublisherController {
 			)
 		);
 
-		// Generate an editable tour draft from a reviewed event — an editorial
-		// action, so publish tier (the node restricts it to admin/service).
+		// Generate an editable tour draft from a reviewed event: an editorial
+		// action on an event, gated at the publish tier for consistency with
+		// event review. Every proxied call runs under the shared service
+		// identity the node authorises, so the plugin's tier is the real gate.
 		register_rest_route(
 			self::NAMESPACE,
 			self::EVENTS_BASE . '/' . self::ID_PATTERN . '/tour',

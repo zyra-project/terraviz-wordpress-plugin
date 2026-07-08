@@ -156,10 +156,15 @@ export default function EventReview( { event, boot, onReviewed, onCancel } ) {
 			} )
 			.catch( ( e ) => {
 				const n = normalizeError( e );
+				// Prefer the node's specific reason: the top-level message, else
+				// the first field error (e.g. the `no_datasets` envelope's "no
+				// visible pairings"), before falling back to a generic line.
+				const fieldMsg = n.errors.length ? n.errors[ 0 ].message : '';
 				setNotice( {
 					type: 'error',
 					text:
 						n.message ||
+						fieldMsg ||
 						__(
 							'Could not generate a tour for this event.',
 							'terraviz'

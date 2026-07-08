@@ -277,8 +277,9 @@ Cheap, high-value adds on **verified** contracts:
 > `News feeds | Media channels` sub-tab strip (`blocks/admin/SubTabs.js`); the
 > **Media channels** view (`blocks/admin/MediaChannels.js`, configure-tier) lists
 > built-in + custom YouTube channels and adds/removes custom ones by URL
-> (`PublishClient::{list,create,delete}_media_channel`, `MEDIA_BASE` routes +
-> `normalize_media_channel_body`). The **Generate tour** button on the
+> (`PublishClient::list_media_channels` / `create_media_channel` /
+> `delete_media_channel`, `MEDIA_BASE` routes + `normalize_media_channel_body`).
+> The **Generate tour** button on the
 > event-review screen (`blocks/admin/EventReview.js`, publish-tier) creates an
 > editable tour draft and links the curator into the node's tour author
 > (`?tourEdit=<id>`); `PublishClient::generate_event_tour` +
