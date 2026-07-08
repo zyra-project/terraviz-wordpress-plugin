@@ -235,6 +235,13 @@ No new PHP/REST — pure JS re-arrangement over proven endpoints, **zero upstrea
 risk**. "Recent activity" / "Latest feedback" fill in once Feedback (Milestone
 C) lands.
 
+> **Follow-up:** the Overview counts currently reuse the paginated
+> `listDatasets()` (all pages) purely to tally draft/published/retracted. A
+> dedicated `publisher/summary` proxy route returning counts + queue depth (or a
+> cached summary with manual refresh) would avoid the full paginated walk on
+> large catalogs — a small later optimization, deliberately kept out of the
+> client-only Milestone A.
+
 ### Milestone B — finish the already-built areas 🔜
 
 Cheap, high-value adds on **verified** contracts:
