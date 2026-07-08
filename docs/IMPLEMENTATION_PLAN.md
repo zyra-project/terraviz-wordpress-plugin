@@ -224,16 +224,26 @@ identity model (Phase 2) are unchanged.
 > contract already located upstream. Internal publisher APIs stay guarded by
 > `tests/smoke/`.
 
-### Milestone A — sidebar shell + Overview home 🔜
+### Milestone A — sidebar shell + Overview home ✅ (PR #30)
 
 | Item | Status | Where |
 |---|---|---|
-| Replace the flat tab strip with the grouped sidebar (Overview / Catalog / Newsroom / Insights / Settings); sections gate on existing caps, unbuilt items render a "coming soon" slot so the IA is complete from day one | 🔜 | `blocks/admin/{App,Sidebar}.js` |
-| **Overview** landing page built from data the plugin already has — "Needs you" cards (events awaiting review, missing credential/expiring hero), at-a-glance counts (draft/published/retracted, event-queue depth) | 🔜 | `blocks/admin/Overview.js` |
+| Replace the flat tab strip with the grouped sidebar (Overview / Catalog / Newsroom / Insights / Settings); sections gate on existing caps, unbuilt items render a "coming soon" slot so the IA is complete from day one | ✅ | `blocks/admin/{App,Sidebar}.js` |
+| **Overview** landing page built from data the plugin already has — "Needs you" cards (events awaiting review, missing credential/expiring hero), at-a-glance counts (draft/published/retracted, event-queue depth) | ✅ | `blocks/admin/Overview.js` |
 
 No new PHP/REST — pure JS re-arrangement over proven endpoints, **zero upstream
 risk**. "Recent activity" / "Latest feedback" fill in once Feedback (Milestone
 C) lands.
+
+> **Datasets screen restyled to the mockup (JS-only):** the list now matches the
+> Publisher Portal Datasets scene — subtitle, status count tiles that double as
+> filters, and a table with a thumbnail preview, inline status badge, format, and
+> last-updated, with the lifecycle row actions rendered as uniform understated
+> links (`edit / publish / retract / delete`). The parent fetches the whole
+> catalog once and filters client-side so the tiles show true totals. All fields
+> come from the existing `publisher/datasets` list (`format`, `updated_at`,
+> `thumbnail_url`, `published_at`/`retracted_at`). Where: `blocks/admin/{App,
+> DatasetList}.js`.
 
 > **Follow-up:** the Overview counts currently reuse the paginated
 > `listDatasets()` (all pages) purely to tally draft/published/retracted. A
@@ -248,10 +258,20 @@ Cheap, high-value adds on **verified** contracts:
 
 | Item | Status | Upstream contract |
 |---|---|---|
+| **Right-now hero** management (set dataset + start/end + optional headline; clear), with the catalog-card preview | ✅ | `PUT/DELETE featured-hero.ts` (`{errors:[…]}` envelope) |
 | **Media-channels** sub-tab on the Feeds screen (list builtin + custom YouTube channels, add by URL) | 🔜 | `GET/POST media/youtube-channels.ts` → `{channels:[{channelId,channelName,builtin}]}` / `201 {channel}` |
 | **Generate tour** button on the event-review screen (publish-tier) | 🔜 | `POST events/[id]/tour.ts` → `201` tour draft |
 | In-dashboard **Blog list** view (drafts/published, edit/view) — complements the existing WP→Terraviz post sync | 🔜 | `GET blog.ts?status=` |
-| **Right-now hero** management (set dataset + start/end + optional headline; clear), with the catalog-card preview | 🔜 | `PUT/DELETE featured-hero.ts` (`{errors:[…]}` envelope) |
+
+> **Right-now hero (shipped):** a `Newsroom → Right now` view (publish-tier)
+> reading the current pin via the public `GET /api/v1/featured-hero` and
+> setting/clearing it through the proxy (`PUT`/`DELETE
+> /api/v1/publish/featured-hero`). The write body is `{ dataset_id, window:{
+> start, end }, headline? }` (window mandatory upstream); the `DELETE` returns
+> `204`, so `PublishClient::send()` now accepts a bodyless 2xx as success. Where:
+> `PublishClient::{get,set,clear}_featured_hero`,
+> `PublisherController` (`HERO_BASE` routes + `normalize_hero_body`),
+> `blocks/admin/RightNow.js`.
 
 ### Milestone C — new capability areas ⏳
 

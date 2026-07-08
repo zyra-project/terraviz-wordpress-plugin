@@ -4,7 +4,8 @@
  * Portal mockup, over the workflows the plugin has built. Datasets switches
  * between the list and the create/edit form; Events (publish-tier) switches
  * between the review queue and the per-event review screen; Feeds
- * (configure-tier) manages the RSS/EONET source connectors. Sidebar items that
+ * (configure-tier) manages the RSS/EONET source connectors; Right now
+ * (publish-tier) manages the singleton homepage hero pin. Sidebar items that
  * aren't built yet route to a "coming soon" placeholder so the IA is complete
  * from day one (Milestone A).
  */
@@ -19,6 +20,7 @@ import FeedList from './FeedList';
 import FeedForm from './FeedForm';
 import Sidebar, { NAV, allowedKeys } from './Sidebar';
 import Overview from './Overview';
+import RightNow from './RightNow';
 import { deriveStatus } from './status';
 import {
 	listDatasets,
@@ -45,9 +47,12 @@ function DatasetsSection( { boot, intent, onIntentConsumed } ) {
 	const [ busyId, setBusyId ] = useState( null );
 	const [ notice, setNotice ] = useState( null );
 
+	// Fetch the whole catalog once and filter client-side: the status stat tiles
+	// need totals across every bucket (not just the filtered view), and it makes
+	// switching filters instant. listDatasets() already walks all pages.
 	const refresh = useCallback( () => {
 		setLoading( true );
-		listDatasets( filter || undefined )
+		listDatasets()
 			.then( ( res ) =>
 				setDatasets( Array.isArray( res.datasets ) ? res.datasets : [] )
 			)
@@ -58,7 +63,7 @@ function DatasetsSection( { boot, intent, onIntentConsumed } ) {
 				} )
 			)
 			.finally( () => setLoading( false ) );
-	}, [ filter ] );
+	}, [] );
 
 	useEffect( () => {
 		if ( view === 'list' ) {
@@ -465,6 +470,8 @@ export default function App( { boot } ) {
 				return <EventsSection />;
 			case 'feeds':
 				return <FeedsSection />;
+			case 'right-now':
+				return <RightNow boot={ boot } />;
 			default:
 				return <ComingSoon sectionKey={ activeSection } />;
 		}

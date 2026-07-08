@@ -380,4 +380,91 @@ class PublishClientTest extends WP_UnitTestCase {
 		$this->assertStringEndsWith( '/publish/blog/B1', $this->captured_url );
 		$this->assertSame( 'publish', json_decode( $this->captured_args['body'], true )['action'] );
 	}
+
+	public function test_get_featured_hero_reads_public_path(): void {
+		$this->canned = $this->respond(
+			200,
+			(string) wp_json_encode(
+				array(
+					'hero' => array(
+						'datasetId' => 'D1',
+						'window'    => array(
+							'start' => '2026-07-01T00:00:00.000Z',
+							'end'   => '2026-07-08T00:00:00.000Z',
+						),
+					),
+				)
+			)
+		);
+
+		$result = $this->client()->get_featured_hero();
+
+		$this->assertTrue( $result['ok'] );
+		$this->assertSame( 'GET', $this->captured_args['method'] );
+		// The read is the *public* endpoint, not the /publish/ route.
+		$this->assertStringEndsWith( '/api/v1/featured-hero', $this->captured_url );
+		$this->assertSame( 'D1', $result['data']['hero']['datasetId'] );
+	}
+
+	public function test_set_featured_hero_puts_to_publish_path(): void {
+		$this->canned = $this->respond(
+			200,
+			(string) wp_json_encode( array( 'hero' => array( 'datasetId' => 'D1' ) ) )
+		);
+
+		$result = $this->client()->set_featured_hero(
+			array(
+				'dataset_id' => 'D1',
+				'window'     => array(
+					'start' => '2026-07-01T00:00:00.000Z',
+					'end'   => '2026-07-08T00:00:00.000Z',
+				),
+				'headline'   => 'Aurora tonight',
+			)
+		);
+
+		$this->assertTrue( $result['ok'] );
+		$this->assertSame( 'PUT', $this->captured_args['method'] );
+		$this->assertStringEndsWith( '/api/v1/publish/featured-hero', $this->captured_url );
+		$sent = json_decode( $this->captured_args['body'], true );
+		$this->assertSame( 'D1', $sent['dataset_id'] );
+		$this->assertSame( 'Aurora tonight', $sent['headline'] );
+	}
+
+	public function test_clear_featured_hero_treats_204_as_success(): void {
+		// The DELETE route returns 204 No Content — a bodyless success the
+		// client must not mistake for an intercepted (empty-body) response.
+		$this->canned = $this->respond( 204, '' );
+
+		$result = $this->client()->clear_featured_hero();
+
+		$this->assertTrue( $result['ok'] );
+		$this->assertSame( 204, $result['status'] );
+		$this->assertSame( '', $result['error'] );
+		$this->assertSame( 'DELETE', $this->captured_args['method'] );
+		$this->assertStringEndsWith( '/api/v1/publish/featured-hero', $this->captured_url );
+	}
+
+	public function test_set_featured_hero_passes_through_validation_errors(): void {
+		$this->canned = $this->respond(
+			400,
+			(string) wp_json_encode(
+				array(
+					'errors' => array(
+						array(
+							'field'   => 'window',
+							'code'    => 'invalid_range',
+							'message' => 'start must be before end',
+						),
+					),
+				)
+			)
+		);
+
+		$result = $this->client()->set_featured_hero( array( 'dataset_id' => 'D1' ) );
+
+		$this->assertFalse( $result['ok'] );
+		$this->assertSame( 'validation', $result['error'] );
+		$this->assertSame( 'window', $result['errors'][0]['field'] );
+	}
 }

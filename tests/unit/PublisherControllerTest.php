@@ -790,4 +790,147 @@ class PublisherControllerTest extends WP_UnitTestCase {
 		$this->assertSame( 409, $response->get_status() );
 		$this->assertSame( 'credential_missing', $response->get_data()['error'] );
 	}
+
+	public function test_get_featured_hero_forwards_get_to_public_path(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['GET'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode( array( 'hero' => null ) ),
+		);
+
+		$response = $this->controller->get_featured_hero();
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertContains( 'GET', $this->sent_methods );
+		$this->assertStringEndsWith( '/api/v1/featured-hero', end( $this->sent_urls ) );
+	}
+
+	public function test_set_featured_hero_forwards_put_with_normalized_body(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['PUT'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode( array( 'hero' => array( 'datasetId' => 'D1' ) ) ),
+		);
+
+		$request  = $this->put_request(
+			'',
+			array(
+				'dataset_id' => 'D1',
+				'window'     => array(
+					'start' => '2026-07-01T00:00:00.000Z',
+					'end'   => '2026-07-08T00:00:00.000Z',
+					'junk'  => 'x',
+				),
+				'headline'   => 'Aurora tonight',
+				'evil'       => 'DROP',
+			)
+		);
+		$response = $this->controller->set_featured_hero( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertStringEndsWith( '/api/v1/publish/featured-hero', end( $this->sent_urls ) );
+
+		$sent = json_decode( end( $this->sent_bodies ), true );
+		$this->assertSame(
+			array(
+				'dataset_id' => 'D1',
+				'window'     => array(
+					'start' => '2026-07-01T00:00:00.000Z',
+					'end'   => '2026-07-08T00:00:00.000Z',
+				),
+				'headline'   => 'Aurora tonight',
+			),
+			$sent
+		);
+	}
+
+	public function test_clear_featured_hero_forwards_delete_and_preserves_204(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['DELETE'] = array(
+			'response' => array( 'code' => 204 ),
+			'body'     => '',
+		);
+
+		$response = $this->controller->clear_featured_hero();
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 204, $response->get_status() );
+		$this->assertContains( 'DELETE', $this->sent_methods );
+		$this->assertStringEndsWith( '/api/v1/publish/featured-hero', end( $this->sent_urls ) );
+	}
+
+	public function test_normalize_hero_body_allowlists_and_coerces(): void {
+		// Keeps dataset_id + a whole window; drops unknown window/top-level keys.
+		$out = $this->controller->normalize_hero_body(
+			array(
+				'dataset_id' => 'D1',
+				'window'     => array(
+					'start' => '2026-07-01T00:00:00Z',
+					'end'   => '2026-07-08T00:00:00Z',
+					'junk'  => 'x',
+				),
+				'headline'   => 'Hi',
+				'set_by'     => 'INJECTED',
+			)
+		);
+		$this->assertSame(
+			array(
+				'dataset_id' => 'D1',
+				'window'     => array(
+					'start' => '2026-07-01T00:00:00Z',
+					'end'   => '2026-07-08T00:00:00Z',
+				),
+				'headline'   => 'Hi',
+			),
+			$out
+		);
+
+		// A null headline is preserved (clears); a non-scalar headline is dropped.
+		$this->assertNull( $this->controller->normalize_hero_body( array( 'headline' => null ) )['headline'] );
+		$this->assertArrayNotHasKey(
+			'headline',
+			$this->controller->normalize_hero_body( array( 'headline' => array( 'a' ) ) )
+		);
+
+		// A window object with no usable start/end is dropped entirely.
+		$this->assertArrayNotHasKey(
+			'window',
+			$this->controller->normalize_hero_body( array( 'window' => array( 'junk' => 1 ) ) )
+		);
+	}
+
+	public function test_hero_routes_require_publish_tier(): void {
+		$editor = self::factory()->user->create( array( 'role' => 'editor' ) );
+		$author = self::factory()->user->create( array( 'role' => 'author' ) );
+
+		// The hero routes all gate on the publish tier.
+		wp_set_current_user( $editor );
+		$this->assertTrue( $this->controller->require_publish() );
+
+		wp_set_current_user( $author );
+		$this->assertFalse( $this->controller->require_publish() );
+	}
+
+	public function test_set_featured_hero_without_credential_returns_409(): void {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+
+		$response = $this->controller->set_featured_hero( $this->put_request( '', array( 'dataset_id' => 'D1' ) ) );
+
+		$this->assertSame( 409, $response->get_status() );
+		$this->assertSame( 'credential_missing', $response->get_data()['error'] );
+	}
 }

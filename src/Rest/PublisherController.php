@@ -50,6 +50,7 @@ final class PublisherController {
 	private const BASE        = '/publisher/datasets';
 	private const EVENTS_BASE = '/publisher/events';
 	private const FEEDS_BASE  = '/publisher/feeds';
+	private const HERO_BASE   = '/publisher/featured-hero';
 
 	/**
 	 * URL-segment pattern for a dataset id (ULID or slug).
@@ -294,6 +295,34 @@ final class PublisherController {
 				),
 			)
 		);
+
+		// The "Right now" hero: the singleton homepage pin. Setting operator-wide
+		// homepage content is an editorial action, so the plugin gates it at the
+		// publish tier (the node itself restricts writes to its privileged
+		// service identity, which every proxied call already uses). The read is
+		// the *public* GET /api/v1/featured-hero, kept behind the same tier here
+		// so the whole area is one gate.
+		register_rest_route(
+			self::NAMESPACE,
+			self::HERO_BASE,
+			array(
+				array(
+					'methods'             => 'GET',
+					'callback'            => array( $this, 'get_featured_hero' ),
+					'permission_callback' => array( $this, 'require_publish' ),
+				),
+				array(
+					'methods'             => 'PUT',
+					'callback'            => array( $this, 'set_featured_hero' ),
+					'permission_callback' => array( $this, 'require_publish' ),
+				),
+				array(
+					'methods'             => 'DELETE',
+					'callback'            => array( $this, 'clear_featured_hero' ),
+					'permission_callback' => array( $this, 'require_publish' ),
+				),
+			)
+		);
 	}
 
 	/**
@@ -516,6 +545,51 @@ final class PublisherController {
 		);
 
 		return $this->respond( $client->preview_feed( $query ) );
+	}
+
+	/**
+	 * GET the current "right now" hero override (raw `{ hero: {…}|null }`).
+	 *
+	 * @return WP_REST_Response
+	 */
+	public function get_featured_hero(): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		return $this->respond( $client->get_featured_hero() );
+	}
+
+	/**
+	 * PUT (upsert) the hero override.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function set_featured_hero( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		$body = $this->normalize_hero_body( (array) $request->get_json_params() );
+
+		return $this->respond( $client->set_featured_hero( $body ) );
+	}
+
+	/**
+	 * DELETE (clear) the hero override. Idempotent — the node returns 204.
+	 *
+	 * @return WP_REST_Response
+	 */
+	public function clear_featured_hero(): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		return $this->respond( $client->clear_featured_hero() );
 	}
 
 	/**
@@ -955,6 +1029,45 @@ final class PublisherController {
 
 		if ( array_key_exists( 'enabled', $raw ) ) {
 			$out['enabled'] = rest_sanitize_boolean( $raw['enabled'] );
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Reduce a caller-supplied hero-override body to the allowlisted shape the
+	 * node accepts: `{ dataset_id, window:{ start, end }, headline? }`. The PUT
+	 * is a full upsert (not a patch), so the window is forwarded whole; the node
+	 * performs the authoritative validation (mandatory window, ISO-8601 parsing,
+	 * `start` before `end`, headline length) and returns field errors we pass
+	 * through. Unknown keys are dropped.
+	 *
+	 * @param array<string,mixed> $raw Decoded JSON body.
+	 * @return array<string,mixed>
+	 */
+	public function normalize_hero_body( array $raw ): array {
+		$out = array();
+
+		if ( isset( $raw['dataset_id'] ) && ( is_string( $raw['dataset_id'] ) || is_numeric( $raw['dataset_id'] ) ) ) {
+			$out['dataset_id'] = (string) $raw['dataset_id'];
+		}
+
+		if ( isset( $raw['window'] ) && is_array( $raw['window'] ) ) {
+			$window = array();
+			foreach ( array( 'start', 'end' ) as $key ) {
+				if ( isset( $raw['window'][ $key ] ) && ( is_string( $raw['window'][ $key ] ) || is_numeric( $raw['window'][ $key ] ) ) ) {
+					$window[ $key ] = (string) $raw['window'][ $key ];
+				}
+			}
+			if ( ! empty( $window ) ) {
+				$out['window'] = $window;
+			}
+		}
+
+		// Nullable: null clears the headline; a scalar sets it. Anything else
+		// (array/object) is dropped rather than stringified to "Array".
+		if ( array_key_exists( 'headline', $raw ) && ( null === $raw['headline'] || is_scalar( $raw['headline'] ) ) ) {
+			$out['headline'] = null === $raw['headline'] ? null : (string) $raw['headline'];
 		}
 
 		return $out;
