@@ -183,7 +183,94 @@ write-permissive, read-strict.
 
 ---
 
-## Phase 5 — per-user auth ⏳ (conditional, mostly main-repo)
+## Phase 5 — newsroom curation: events + feeds ✅ (plugin repo)
+
+The "incoming news → curated event → globe front page" pipeline the mockup calls
+the **Newsroom**. Feed connectors ingest current events; a curator reviews each
+proposed event and confirms the datasets it pairs with. Both slices ship in the
+publisher dashboard today (built after Phase 4; the plan doc previously stopped
+at the blog bridge).
+
+| Item | Status | Where |
+|---|---|---|
+| **Event review queue** — list by bucket (`proposed`/`approved`/`rejected`/`expired`/`all`), approve/reject, accept/reject suggested dataset links, add datasets, bounded field edits (date/location/image) | ✅ | `blocks/admin/{EventList,EventReview}.js`, `PublisherController::{list,review}_event`, `PublishClient::{list_events,review_event}` |
+| **Feed connectors** — list/create/update/delete RSS + EONET sources, enable/pause toggle, dry-run **preview** (writes nothing) | ✅ | `blocks/admin/{FeedList,FeedForm}.js`, `PublisherController` feeds routes, `PublishClient` feeds methods |
+| Tier gating: event review is **publish-tier**; feed management is **configure-tier** (the node restricts every feed endpoint, reads included, to admin/service callers) | ✅ | `PublisherController::require_{publish,configure}` |
+
+Verified upstream contracts: events are born `proposed` and the caller submits a
+single review POST (`{ event?, addDatasetIds?, links?, edits? }`); feeds are a
+patch-over-POST connector CRUD with an immutable `kind`. Both are **internal**
+publisher APIs — guard with `tests/smoke/`.
+
+---
+
+## Phase 6 — publisher-dashboard parity with the app mockup 🔜 (plugin repo)
+
+The Terraviz app's own **Publisher Portal** mockup
+([UI/UX review deck](https://docs.google.com/presentation/d/15yxZJrtdjtUy5PhG1pdnq8SpPfMXkv5dLgQaRjeHla8/edit))
+is a grouped left-sidebar IA — **Overview · Catalog · Newsroom · Insights ·
+Settings** — over a much wider surface than the plugin's current flat
+`Datasets | Events | Feeds` tab strip. This phase brings the wp-admin dashboard
+toward that shape. **Feasibility is confirmed**, not speculative: reading
+upstream `functions/api/v1/publish/**`, every mockup area is backed by an
+existing endpoint (`analytics`, `feedback`, `media/youtube-channels`,
+`events/[id]/tour`, `tours*`, `blog`, `featured-hero`, `node-profile`,
+`publishers`, `workflows`). The only work is the plugin's own proxy → REST → UI
+slices; the read/embed **no-credential** posture and the shared-`service`
+identity model (Phase 2) are unchanged.
+
+> **Method (unchanged):** each new area is a thin `PublishClient` method + a
+> capability-gated `terraviz/v1/publisher/*` route + a dashboard view, against a
+> contract already located upstream. Internal publisher APIs stay guarded by
+> `tests/smoke/`.
+
+### Milestone A — sidebar shell + Overview home 🔜
+
+| Item | Status | Where |
+|---|---|---|
+| Replace the flat tab strip with the grouped sidebar (Overview / Catalog / Newsroom / Insights / Settings); sections gate on existing caps, unbuilt items render a "coming soon" slot so the IA is complete from day one | 🔜 | `blocks/admin/{App,Sidebar}.js` |
+| **Overview** landing page built from data the plugin already has — "Needs you" cards (events awaiting review, missing credential/expiring hero), at-a-glance counts (draft/published/retracted, event-queue depth) | 🔜 | `blocks/admin/Overview.js` |
+
+No new PHP/REST — pure JS re-arrangement over proven endpoints, **zero upstream
+risk**. "Recent activity" / "Latest feedback" fill in once Feedback (Milestone
+C) lands.
+
+> **Follow-up:** the Overview counts currently reuse the paginated
+> `listDatasets()` (all pages) purely to tally draft/published/retracted. A
+> dedicated `publisher/summary` proxy route returning counts + queue depth (or a
+> cached summary with manual refresh) would avoid the full paginated walk on
+> large catalogs — a small later optimization, deliberately kept out of the
+> client-only Milestone A.
+
+### Milestone B — finish the already-built areas 🔜
+
+Cheap, high-value adds on **verified** contracts:
+
+| Item | Status | Upstream contract |
+|---|---|---|
+| **Media-channels** sub-tab on the Feeds screen (list builtin + custom YouTube channels, add by URL) | 🔜 | `GET/POST media/youtube-channels.ts` → `{channels:[{channelId,channelName,builtin}]}` / `201 {channel}` |
+| **Generate tour** button on the event-review screen (publish-tier) | 🔜 | `POST events/[id]/tour.ts` → `201` tour draft |
+| In-dashboard **Blog list** view (drafts/published, edit/view) — complements the existing WP→Terraviz post sync | 🔜 | `GET blog.ts?status=` |
+| **Right-now hero** management (set dataset + start/end + optional headline; clear), with the catalog-card preview | 🔜 | `PUT/DELETE featured-hero.ts` (`{errors:[…]}` envelope) |
+
+### Milestone C — new capability areas ⏳
+
+Each its own proxy → REST → UI slice, in likely value order. Contracts already
+located upstream:
+
+| Area | Upstream contract | Note |
+|---|---|---|
+| **Analytics** | `analytics.ts`, `analytics-export.ts` | sessions / view time / platform-OS mix / top countries + CSV |
+| **Feedback** | `feedback.ts` | Orbit AI ratings + general feedback |
+| **Tours CRUD** | `tours.ts`, `tours/[id]*.ts`, `tours/draft.ts` | full lifecycle (embed block already exists for read) |
+| **Import** | (bulk manifest) | CSV/JSON → drafts; remote-node + CLI paths are out of plugin scope |
+| **Workflows** | `workflows.ts`, `workflows/[id].ts`, `workflows/due.ts` | scheduled refresh pipelines |
+| **Node profile** | `node-profile.ts`, `node-profile/logo.ts` | org identity + logo |
+| **Team** | `publishers.ts` | ⚠️ **read-only / deferred** — clashes with the shared-`service` identity (Phase 2); the dashboard surfaces "acting as the shared publisher" rather than per-user management |
+
+---
+
+## Phase 7 — per-user auth ⏳ (conditional, mostly main-repo)
 
 Only if a real deployment needs per-user attribution: an OIDC / bearer
 `authProvider` in the **main repo** (upstream §5 Option 2), coordinated with
