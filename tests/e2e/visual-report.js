@@ -57,21 +57,31 @@ const SCENES = {
 
 function parseThreshold() {
 	const idx = process.argv.indexOf( '--threshold' );
-	if ( idx !== -1 && process.argv[ idx + 1 ] ) {
-		return Number( process.argv[ idx + 1 ] );
+	const raw =
+		idx !== -1 && process.argv[ idx + 1 ]
+			? process.argv[ idx + 1 ]
+			: process.env.VISUAL_REPORT_THRESHOLD;
+	if ( raw === undefined ) {
+		return DEFAULT_THRESHOLD;
 	}
-	if ( process.env.VISUAL_REPORT_THRESHOLD ) {
-		return Number( process.env.VISUAL_REPORT_THRESHOLD );
+	// A non-numeric or negative override would make `ratio > threshold` never
+	// (or always) true and silently hide real diffs — reject it.
+	const value = Number( raw );
+	if ( ! Number.isFinite( value ) || value < 0 ) {
+		// eslint-disable-next-line no-console
+		console.warn( `Ignoring invalid threshold "${ raw }"; using ${ DEFAULT_THRESHOLD }.` );
+		return DEFAULT_THRESHOLD;
 	}
-	return DEFAULT_THRESHOLD;
+	return value;
 }
 
 // Neutralise anything a scene name could inject into the Markdown table/summary.
 // Scene names come from the PR's own spec files, and the comment is posted by a
-// write-scoped job, so keep untrusted strings inert (no pipes/backticks/HTML).
+// write-scoped job, so keep untrusted strings inert: no pipes/backticks/HTML,
+// and no `@`/`#` that GitHub would auto-link into mentions or issue refs.
 function sanitize( str ) {
 	return String( str )
-		.replace( /[|`<>\\]/g, '' )
+		.replace( /[|`<>\\@#]/g, '' )
 		.replace( /\r?\n/g, ' ' )
 		.trim()
 		.slice( 0, 120 );

@@ -56,6 +56,13 @@ jobs:
           script: |
             const fs = require('fs');
 
+            // The artifact is produced by untrusted PR code (forks included), so
+            // treat its body defensively: it must carry our marker (so the sticky
+            // lookup works and a stray/omitted marker can't spam new comments), and
+            // it's capped so a hostile run can't post a wall of text.
+            const marker = '<!-- terraviz-visual-report -->';
+            const MAX_BODY = 60000;
+
             let body;
             try {
               body = fs.readFileSync('report/visual-report.md', 'utf8');
@@ -66,6 +73,13 @@ jobs:
             if (!body.trim()) {
               core.info('Empty report body; nothing to post.');
               return;
+            }
+            if (!body.includes(marker)) {
+              core.info('Report body is missing the expected marker; skipping.');
+              return;
+            }
+            if (body.length > MAX_BODY) {
+              body = body.slice(0, MAX_BODY) + '\n\n_…report truncated._';
             }
 
             // Prefer the PR number the capture job stashed (reliable for forks);
@@ -84,7 +98,6 @@ jobs:
             }
 
             const { owner, repo } = context.repo;
-            const marker = '<!-- terraviz-visual-report -->';
 
             const comments = await github.paginate(
               github.rest.issues.listComments,

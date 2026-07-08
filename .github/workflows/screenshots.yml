@@ -108,7 +108,9 @@ jobs:
       # post (workflow_run.pull_requests is unreliable for forks).
       - name: Record PR number
         if: ${{ always() && github.event_name == 'pull_request' }}
-        run: echo "${{ github.event.pull_request.number }}" > tests/e2e/.artifacts/pr.txt
+        run: |
+          mkdir -p tests/e2e/.artifacts
+          echo "${{ github.event.pull_request.number }}" > tests/e2e/.artifacts/pr.txt
 
       # The comment body + metrics, consumed by screenshots-comment.yml. Carries
       # no code — just the Markdown, the JSON metrics, and the PR number.
