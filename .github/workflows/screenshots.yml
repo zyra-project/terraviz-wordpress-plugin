@@ -13,20 +13,22 @@ name: Screenshots
 # Kept OUT of the core ci.yml gate (its own workflow) so a screenshot flake
 # never blocks a merge.
 #
-# Updating baselines: this workflow never writes to the repo (it is read-only —
-# a protected default branch can't be pushed to directly anyway, and the job
-# runs untrusted PR code). To (re)generate baselines, run it manually with
-# `update_baselines = true`; it uploads a `refreshed-baselines` artifact
-# (tests/e2e/__snapshots__/ + .wordpress-org/screenshot-N.png) that you commit
-# via a PR. Day to day, regenerate on your feature branch with
-# `npm run screenshots:update` and commit the diff alongside the UI change, so
-# the PR's own Screenshots run validates it. See tests/e2e/README.md.
+# Updating baselines: the capture job is read-only — it runs untrusted PR code,
+# so its token can never write, and a protected default branch can't be pushed to
+# directly anyway. To (re)generate baselines, run the workflow manually with
+# `update_baselines = true`. A separate, write-scoped `open-baseline-pr` job
+# (gated to workflow_dispatch, so it never runs against PR code) then commits the
+# regenerated baselines and opens a PR for you; it also uploads a
+# `refreshed-baselines` artifact if you'd rather commit them by hand. Day to day,
+# regenerate on your feature branch with `npm run screenshots:update` and commit
+# the diff alongside the UI change, so the PR's own Screenshots run validates it.
+# See tests/e2e/README.md.
 
 on:
   workflow_dispatch:
     inputs:
       update_baselines:
-        description: 'Regenerate baselines + WordPress.org listing images and upload them as a refreshed-baselines artifact to commit via a PR'
+        description: 'Regenerate baselines + WordPress.org listing images, then open a PR with them automatically (also uploaded as a refreshed-baselines artifact)'
         type: boolean
         default: false
   pull_request:
@@ -67,8 +69,27 @@ jobs:
       # The PHP blocks register from build/; the dashboard app is built here too.
       - run: npm run build
 
+      # `playwright install --with-deps` fetches Chromium plus a set of font
+      # packages from the Ubuntu mirror via apt, which intermittently stalls
+      # mid-download and hangs the step until the 6-hour job limit. Give apt a
+      # per-download socket timeout + retries so a stalled fetch aborts and is
+      # re-tried (instead of hanging), and wrap the whole install in an outer
+      # retry as a backstop. `timeout-minutes` is the final guard.
       - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
+        timeout-minutes: 15
+        run: |
+          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
+            | sudo tee /etc/apt/apt.conf.d/99timeout-retry >/dev/null
+          for attempt in 1 2 3; do
+            echo "Playwright install attempt ${attempt}/3"
+            if npx playwright install --with-deps chromium; then
+              exit 0
+            fi
+            echo "::warning::Playwright install attempt ${attempt} failed; retrying in 15s"
+            sleep 15
+          done
+          echo "::error::Playwright install failed after 3 attempts"
+          exit 1
 
       - name: Enable offline E2E fixtures for wp-env
         run: |
@@ -146,9 +167,9 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
 
-      # On a baseline refresh, publish the regenerated baselines + listing images
-      # as an artifact to download and commit via a PR (this workflow never
-      # writes to the repo itself — see the header note).
+      # On a baseline refresh, also publish the regenerated baselines + listing
+      # images as an artifact — consumed by the open-baseline-pr job below, and a
+      # manual fallback if you'd rather commit them by hand.
       - name: Upload refreshed baselines
         if: ${{ github.event.inputs.update_baselines == 'true' }}
         uses: actions/upload-artifact@v4
@@ -163,3 +184,75 @@ jobs:
       - name: Stop WordPress (wp-env)
         if: always()
         run: npx wp-env stop
+
+  # Commit the regenerated baselines and open a PR — one-click refresh instead of
+  # downloading the artifact by hand. Deliberately a SEPARATE job so the write
+  # token is isolated from the capture job, and gated to `workflow_dispatch` (a
+  # manual trigger, only available to users with repo write access) so the
+  # untrusted `pull_request` path never reaches it — the capture job stays
+  # `contents: read`.
+  open-baseline-pr:
+    name: Open baseline-refresh PR
+    needs: capture
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.update_baselines == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the baseline branch
+      pull-requests: write # open the PR
+      actions: read # download the run's artifact
+    steps:
+      - uses: actions/checkout@v4
+
+      # The baselines the capture job just regenerated (paths preserved:
+      # tests/e2e/__snapshots__/** and .wordpress-org/screenshot-*.png).
+      - name: Download regenerated baselines
+        uses: actions/download-artifact@v4
+        with:
+          name: refreshed-baselines
+
+      - name: Commit baselines and open a PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          # Stage first so new (untracked) mobile baselines count, then bail if
+          # the render already matches what's committed.
+          git add tests/e2e/__snapshots__ .wordpress-org
+          if git diff --cached --quiet; then
+            echo "Baselines already match the current render; nothing to open."
+            exit 0
+          fi
+
+          branch="chore/refresh-screenshot-baselines-${GITHUB_RUN_ID}"
+          git switch -c "$branch"
+          # -s for the DCO gate; identity matches the sign-off.
+          git commit -s \
+            -m 'test(e2e): refresh screenshot baselines' \
+            -m "Regenerated by the Screenshots workflow (update_baselines dispatch, run ${GITHUB_RUN_ID})."
+          git push origin "$branch"
+
+          cat > "${RUNNER_TEMP}/pr-body.md" <<'EOF'
+          Automated baseline refresh from the **Screenshots** workflow (`update_baselines` dispatch).
+
+          These PNGs were captured and written by that same run, so they already reflect the current CI-Linux rendering — review the image diff and merge.
+
+          _Opened by `GITHUB_TOKEN`, so required status checks may not run automatically on this PR (GitHub loop-prevention). Push an empty commit or re-run them if branch protection requires them._
+          EOF
+
+          # Opening the PR needs "Allow GitHub Actions to create and approve pull
+          # requests" (Settings → Actions → General). If that's off, gh fails —
+          # the branch is already pushed, so fall back to printing the compare
+          # link instead of failing the job.
+          if gh pr create \
+            --base "${GITHUB_REF_NAME}" \
+            --head "$branch" \
+            --title "Refresh screenshot baselines (run ${GITHUB_RUN_ID})" \
+            --body-file "${RUNNER_TEMP}/pr-body.md"; then
+            echo "Opened a baseline-refresh PR."
+          else
+            echo "::warning::Pushed ${branch}, but could not open the PR automatically. Enable 'Allow GitHub Actions to create and approve pull requests' (Settings → Actions → General) for one-click PRs."
+            echo "Open one here: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/${GITHUB_REF_NAME}...${branch}?expand=1"
+          fi

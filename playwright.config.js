@@ -71,6 +71,23 @@ module.exports = defineConfig( {
 			},
 		},
 		{
+			// The blocks again at a phone width — the visitor-facing surface, where
+			// the responsive SSR fallback actually has to reflow. Shares the block
+			// specs; blocks.spec.js suffixes these shots `-mobile` and skips the
+			// WordPress.org listing writes (those stay the desktop images). The
+			// wp-admin views are WordPress core's responsive surface, not the
+			// plugin's, so they aren't re-shot here.
+			name: 'frontend-mobile',
+			testMatch: /blocks\.spec\.js$/,
+			use: {
+				browserName: 'chromium',
+				viewport: { width: 390, height: 844 },
+				deviceScaleFactor: 2,
+				isMobile: true,
+				hasTouch: true,
+			},
+		},
+		{
 			name: 'admin',
 			testMatch: /dashboard\.spec\.js$/,
 			use: {

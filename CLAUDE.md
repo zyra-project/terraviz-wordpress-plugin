@@ -159,8 +159,9 @@ hand; they're excluded from PHPCS.
   the node is unreachable.
 - `tests/e2e/` is the **screenshot / visual-regression suite** (Playwright
   driving a real `wp-env` WordPress, so it needs Docker; `npm run screenshots`).
-  It captures every block + the wp-admin dashboard views against **offline
-  fixtures**: a gated mu-plugin (`tests/e2e/mu-plugins/`, inert unless the
+  It captures every block at two viewports (`frontend` desktop + `frontend-mobile`
+  phone; mobile shots are suffixed `-mobile` and skip the WP.org images) plus the
+  wp-admin dashboard views (desktop only) against **offline fixtures**: a gated mu-plugin (`tests/e2e/mu-plugins/`, inert unless the
   `TERRAVIZ_E2E` constant is set) short-circuits the public read API, and its
   fixture JSON lives **beside** the mu-plugin (`.../mu-plugins/fixtures/`) so the
   single wp-env mapping mounts it into the container. Baselines
@@ -187,11 +188,15 @@ hand; they're excluded from PHPCS.
   `src/Contract/*` types, and the E2E harness (`tests/e2e/`).
 - `.github/workflows/screenshots.yml` — the Playwright screenshot /
   visual-regression suite (see Tests). **Non-gating** (its own workflow, kept out
-  of `ci.yml`) so a screenshot flake never blocks a merge. It is **read-only**;
-  on a manual `update_baselines` dispatch it uploads a `refreshed-baselines`
-  artifact to commit via a PR, rather than pushing to the protected default
-  branch (a direct push can't satisfy the required status checks). It also
-  uploads a data-only `visual-report` artifact.
+  of `ci.yml`) so a screenshot flake never blocks a merge. The **capture job is
+  read-only** (runs untrusted PR code). On a manual `update_baselines` dispatch, a
+  separate **`open-baseline-pr`** job — gated to `workflow_dispatch` with its own
+  job-scoped `contents: write`/`pull-requests: write` token — commits the
+  regenerated baselines and opens a PR (and still uploads a `refreshed-baselines`
+  artifact as a manual fallback); it never runs against PR code, so the capture
+  path stays read-only. Also uploads a data-only `visual-report` artifact. The
+  Playwright install step is retry/timeout-hardened against flaky Ubuntu-mirror
+  stalls.
 - `.github/workflows/screenshots-comment.yml` — posts the visual-report artifact
   as a sticky PR comment. Separate `workflow_run` workflow (checks out **no PR
   code**) so it can safely hold `pull-requests: write` — the read-only capture
