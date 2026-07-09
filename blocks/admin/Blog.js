@@ -12,7 +12,7 @@
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { useState, useEffect, useCallback } from '@wordpress/element';
 import { Button, Spinner, Notice, ExternalLink } from '@wordpress/components';
-import { listBlog, normalizeError } from './api';
+import { listBlog, importBlogToWp, normalizeError } from './api';
 import { safeHttpUrl } from './safeUrl';
 
 const STATUSES = [ 'draft', 'published' ];
@@ -110,6 +110,7 @@ export default function Blog( { boot } ) {
 	const [ loading, setLoading ] = useState( true );
 	const [ filter, setFilter ] = useState( '' );
 	const [ notice, setNotice ] = useState( null );
+	const [ busyId, setBusyId ] = useState( null );
 
 	const refresh = useCallback( () => {
 		setLoading( true );
@@ -139,6 +140,29 @@ export default function Blog( { boot } ) {
 	} );
 	const rows = filter ? posts.filter( ( p ) => p.status === filter ) : posts;
 	const toggle = ( status ) => setFilter( filter === status ? '' : status );
+
+	// Seed a WordPress draft from a node post, then hand the author straight to
+	// the WP editor to finish and publish (the sync carries edits back).
+	const createWpPost = ( post ) => {
+		setBusyId( post.id );
+		setNotice( null );
+		importBlogToWp( post.id )
+			.then( ( res ) => {
+				const editUrl = safeHttpUrl( res && res.editUrl );
+				if ( editUrl ) {
+					window.location.assign( editUrl );
+				} else {
+					refresh();
+				}
+			} )
+			.catch( ( e ) =>
+				setNotice( {
+					type: 'error',
+					text: normalizeError( e ).message,
+				} )
+			)
+			.finally( () => setBusyId( null ) );
+	};
 
 	if ( loading ) {
 		return <Spinner />;
@@ -266,6 +290,23 @@ export default function Blog( { boot } ) {
 									href={ editUrl }
 								>
 									{ __( 'Edit in WordPress', 'terraviz' ) }
+								</Button>
+							);
+						} else {
+							// No linked WP post yet: offer to seed one from the
+							// node draft (Terraviz drives the initial content).
+							actions.push(
+								<Button
+									key="create"
+									variant="link"
+									onClick={ () => createWpPost( post ) }
+									isBusy={ busyId === post.id }
+									disabled={ busyId === post.id }
+								>
+									{ __(
+										'Create WordPress post',
+										'terraviz'
+									) }
 								</Button>
 							);
 						}

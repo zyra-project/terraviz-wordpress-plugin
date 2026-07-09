@@ -178,9 +178,17 @@ capability that belongs on the **Event review** screen, not here — see §9.
 1. ✅ **Blog list (read) + reverse map** — `list_blog` client + `GET
    /publisher/blog` (decorated with `wp_edit_url`) + `Blog.js` (tiles, table,
    View, Edit-in-WordPress) + wire the sidebar tab to built. New-post → WP
-   editor. *No node writes; lowest risk.* Shipped in this PR.
-2. **Seed WP post from a node post** — `POST /publisher/blog/:id/import-to-wp`
-   + the "Create WordPress post" action + md→content conversion (v1).
+   editor. *No node writes; lowest risk.* (PR #33.)
+2. ✅ **Seed WP post from a node post** — `POST /publisher/blog/:id/import-to-wp`
+   creates a WP **draft** (authored by the acting user) from the node post's
+   title + `markdown_to_html(bodyMd)`, writes the `Sync` link meta
+   (`ID`/`SLUG`/`OPTIN`) so the existing WP→node sync updates the same stub on
+   publish, and is idempotent (returns the existing WP post when already linked).
+   `Blog.js` adds a **Create WordPress post** action on unlinked posts that hands
+   the author into the WP editor. The `markdown_to_html` v1 pass covers
+   paragraphs, ATX headings (clamped h2–h6), unordered lists, links, and
+   bold/italic/code, escaping all user text (`wp_kses_post` on the result);
+   tables/ordered-lists/images/fenced-code are a later refinement.
 3. **Blog post template** (optional) — starter pattern/template.
 
 Each slice is its own PR. Slice 1 is the deck-faithful list and is independently

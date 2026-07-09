@@ -1154,4 +1154,117 @@ class PublisherControllerTest extends WP_UnitTestCase {
 		$this->assertSame( 409, $response->get_status() );
 		$this->assertSame( 'credential_missing', $response->get_data()['error'] );
 	}
+
+	private function import_request( string $id ): WP_REST_Request {
+		$request = new WP_REST_Request( 'POST' );
+		$request->set_param( 'id', $id );
+		return $request;
+	}
+
+	public function test_import_blog_to_wp_creates_linked_draft(): void {
+		$this->configure_credential();
+		$editor = self::factory()->user->create( array( 'role' => 'editor' ) );
+		wp_set_current_user( $editor );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		// The node returns the post to seed from (get_blog).
+		$this->http_by_method['GET'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode(
+				array(
+					'post' => array(
+						'id'     => 'B1',
+						'slug'   => 'a-story',
+						'title'  => 'A Story',
+						'bodyMd' => "Lead paragraph.\n\n[Read more](https://example.com/x)",
+					),
+				)
+			),
+		);
+
+		$response = $this->controller->import_blog_to_wp( $this->import_request( 'B1' ) );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 201, $response->get_status() );
+		$data  = $response->get_data();
+		$wp_id = (int) $data['wpId'];
+		$this->assertGreaterThan( 0, $wp_id );
+		$this->assertNotEmpty( $data['editUrl'] );
+
+		$post = get_post( $wp_id );
+		$this->assertSame( 'draft', $post->post_status );
+		$this->assertSame( 'A Story', $post->post_title );
+		$this->assertSame( (int) $editor, (int) $post->post_author );
+		// Converted body: escaped paragraph + a safe link.
+		$this->assertStringContainsString( '<a href="https://example.com/x">Read more</a>', $post->post_content );
+		// Link meta wires the two together for the existing sync.
+		$this->assertSame( 'B1', get_post_meta( $wp_id, \Terraviz\Blog\Sync::ID_META, true ) );
+		$this->assertSame( 'a-story', get_post_meta( $wp_id, \Terraviz\Blog\Sync::SLUG_META, true ) );
+		$this->assertTrue( (bool) get_post_meta( $wp_id, \Terraviz\Blog\Sync::OPTIN_META, true ) );
+	}
+
+	public function test_import_blog_to_wp_is_idempotent_for_linked_post(): void {
+		$this->configure_credential();
+		$editor = self::factory()->user->create( array( 'role' => 'editor' ) );
+		wp_set_current_user( $editor );
+
+		// An existing WP post already linked to node post B1.
+		$wp_id = self::factory()->post->create(
+			array(
+				'post_status' => 'draft',
+				'post_author' => $editor,
+			)
+		);
+		update_post_meta( $wp_id, \Terraviz\Blog\Sync::ID_META, 'B1' );
+
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+		$response = $this->controller->import_blog_to_wp( $this->import_request( 'B1' ) );
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		// Returns the existing post, does not create a second, and never hits the
+		// node (no get_blog).
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertTrue( $response->get_data()['already_linked'] );
+		$this->assertSame( $wp_id, (int) $response->get_data()['wpId'] );
+		$this->assertNotContains( 'GET', $this->sent_methods );
+
+		$linked = get_posts(
+			array(
+				'post_type'   => 'post',
+				'post_status' => 'any',
+				'fields'      => 'ids',
+				'meta_key'    => \Terraviz\Blog\Sync::ID_META, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
+				'meta_value'  => 'B1', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
+			)
+		);
+		$this->assertCount( 1, $linked );
+	}
+
+	public function test_import_blog_to_wp_without_credential_returns_409(): void {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+
+		$response = $this->controller->import_blog_to_wp( $this->import_request( 'B1' ) );
+
+		$this->assertSame( 409, $response->get_status() );
+		$this->assertSame( 'credential_missing', $response->get_data()['error'] );
+	}
+
+	public function test_markdown_to_html_converts_common_shapes(): void {
+		$this->assertSame(
+			"<p>A summary.</p>\n\n<p><a href=\"https://example.com/x\">Read more</a></p>",
+			$this->controller->markdown_to_html( "A summary.\n\n[Read more](https://example.com/x)" )
+		);
+		// ATX heading clamps to h2 (nests under the post title).
+		$this->assertSame( '<h2>Title</h2>', $this->controller->markdown_to_html( '# Title' ) );
+		// Unordered list.
+		$this->assertSame( '<ul><li>one</li><li>two</li></ul>', $this->controller->markdown_to_html( "- one\n- two" ) );
+		// Raw HTML is escaped (no injection into the WP post).
+		$this->assertSame(
+			'<p>x &lt;script&gt;alert(1)&lt;/script&gt;</p>',
+			$this->controller->markdown_to_html( 'x <script>alert(1)</script>' )
+		);
+		// A non-http(s) link URL is dropped by esc_url.
+		$this->assertStringContainsString( '<a href="">', $this->controller->markdown_to_html( '[x](javascript:alert(1))' ) );
+	}
 }

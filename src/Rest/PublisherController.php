@@ -389,6 +389,20 @@ final class PublisherController {
 				),
 			)
 		);
+
+		// Seed a WordPress post from a node blog post ("Terraviz drives the
+		// initial content"): creates a WP draft prefilled from the node post and
+		// links the two so the existing WP→node sync carries edits back. A write,
+		// so publish-tier.
+		register_rest_route(
+			self::NAMESPACE,
+			self::BLOG_BASE . '/' . self::ID_PATTERN . '/import-to-wp',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'import_blog_to_wp' ),
+				'permission_callback' => array( $this, 'require_publish' ),
+			)
+		);
 	}
 
 	/**
@@ -812,6 +826,218 @@ final class PublisherController {
 		}
 
 		return $map;
+	}
+
+	/**
+	 * The WP post id linked to a node blog-post id (via {@see Sync::ID_META}), or
+	 * 0 when none. Used to avoid seeding a duplicate WP post for an already-linked
+	 * node post.
+	 *
+	 * @param string $node_id Terraviz blog-post id.
+	 * @return int WP post id, or 0.
+	 */
+	private function find_linked_wp_post( string $node_id ): int {
+		if ( '' === $node_id ) {
+			return 0;
+		}
+
+		$ids = get_posts(
+			array(
+				'post_type'   => 'post',
+				'post_status' => 'any',
+				'numberposts' => 1,
+				'fields'      => 'ids',
+				'meta_query'  => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- single-id lookup to detect an existing link.
+					array(
+						'key'   => Sync::ID_META,
+						'value' => $node_id,
+					),
+				),
+			)
+		);
+
+		return ! empty( $ids ) ? (int) $ids[0] : 0;
+	}
+
+	/**
+	 * POST seed a WordPress draft post from a node blog post. Fetches the node
+	 * post, creates a WP draft (authored by the acting user) prefilled with its
+	 * title + converted markdown body, and writes the {@see Sync} link meta so the
+	 * existing WP→node sync treats the two as one object (edits on the WP side
+	 * carry back on publish). If the node post is already linked to a WP post, it
+	 * returns that one rather than duplicating.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function import_blog_to_wp( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		$node_id = (string) $request->get_param( 'id' );
+
+		// Don't create a second WP post for an already-linked node post.
+		$existing = $this->find_linked_wp_post( $node_id );
+		if ( $existing > 0 ) {
+			return new WP_REST_Response(
+				array(
+					'wpId'           => $existing,
+					'editUrl'        => (string) get_edit_post_link( $existing, 'raw' ),
+					'already_linked' => true,
+				),
+				200
+			);
+		}
+
+		$fetched = $client->get_blog( $node_id );
+		if ( ! $fetched['ok'] ) {
+			return $this->respond( $fetched );
+		}
+
+		$post    = ( isset( $fetched['data']['post'] ) && is_array( $fetched['data']['post'] ) ) ? $fetched['data']['post'] : array();
+		$title   = isset( $post['title'] ) ? (string) $post['title'] : '';
+		$body_md = isset( $post['bodyMd'] ) ? (string) $post['bodyMd'] : '';
+		$slug    = isset( $post['slug'] ) ? (string) $post['slug'] : '';
+
+		$wp_id = wp_insert_post(
+			array(
+				'post_type'    => 'post',
+				'post_status'  => 'draft',
+				'post_title'   => '' !== $title ? $title : __( 'Untitled Terraviz post', 'terraviz' ),
+				'post_content' => wp_kses_post( $this->markdown_to_html( $body_md ) ),
+				'post_author'  => get_current_user_id(),
+			),
+			true
+		);
+
+		if ( is_wp_error( $wp_id ) ) {
+			return new WP_REST_Response(
+				array(
+					'error'   => 'wp_insert_failed',
+					'message' => $wp_id->get_error_message(),
+					'errors'  => array(),
+				),
+				500
+			);
+		}
+
+		// Link the two so the WP→node sync updates the existing stub (idempotent
+		// on the returned node id) rather than creating a duplicate, and so a WP
+		// publish carries the edited body back with a link home.
+		update_post_meta( $wp_id, Sync::ID_META, $node_id );
+		update_post_meta( $wp_id, Sync::OPTIN_META, true );
+		if ( '' !== $slug ) {
+			update_post_meta( $wp_id, Sync::SLUG_META, $slug );
+		}
+
+		return new WP_REST_Response(
+			array(
+				'wpId'    => (int) $wp_id,
+				'editUrl' => (string) get_edit_post_link( (int) $wp_id, 'raw' ),
+			),
+			201
+		);
+	}
+
+	/**
+	 * A minimal Markdown → HTML pass for seeding a WP draft (v1): paragraphs,
+	 * ATX headings (clamped to h2–h6 to nest under the post title), unordered
+	 * lists, inline links, bold/italic, and inline code. All user text is escaped
+	 * before markup is applied, and the caller runs the result through
+	 * `wp_kses_post`. Faithful block conversion (tables, ordered lists, images,
+	 * fenced code) is a later refinement — the author polishes the draft in WP.
+	 *
+	 * @param string $md Markdown source.
+	 * @return string HTML.
+	 */
+	public function markdown_to_html( string $md ): string {
+		$md     = str_replace( array( "\r\n", "\r" ), "\n", $md );
+		$blocks = preg_split( '/\n{2,}/', trim( $md ) );
+		if ( ! is_array( $blocks ) ) {
+			return '';
+		}
+
+		$html = array();
+		foreach ( $blocks as $block ) {
+			$block = trim( $block, "\n" );
+			if ( '' === $block ) {
+				continue;
+			}
+
+			// ATX heading (single line).
+			if ( false === strpos( $block, "\n" ) && preg_match( '/^(#{1,6})\s+(.+)$/', $block, $m ) ) {
+				$level  = min( 6, max( 2, strlen( $m[1] ) ) );
+				$html[] = '<h' . $level . '>' . $this->md_inline( $m[2] ) . '</h' . $level . '>';
+				continue;
+			}
+
+			$lines = explode( "\n", $block );
+
+			// Unordered list: every line is a `- ` / `* ` item.
+			$is_list = true;
+			foreach ( $lines as $line ) {
+				if ( ! preg_match( '/^\s*[-*]\s+\S/', $line ) ) {
+					$is_list = false;
+					break;
+				}
+			}
+			if ( $is_list ) {
+				$items = array();
+				foreach ( $lines as $line ) {
+					$items[] = '<li>' . $this->md_inline( (string) preg_replace( '/^\s*[-*]\s+/', '', $line ) ) . '</li>';
+				}
+				$html[] = '<ul>' . implode( '', $items ) . '</ul>';
+				continue;
+			}
+
+			// Paragraph; soft-wrapped lines join with a break.
+			$html[] = '<p>' . implode( '<br />', array_map( array( $this, 'md_inline' ), $lines ) ) . '</p>';
+		}//end foreach
+
+		return implode( "\n\n", $html );
+	}
+
+	/**
+	 * Inline Markdown for one text run: links, bold, italic, code — with all
+	 * user text HTML-escaped and link URLs passed through `esc_url`.
+	 *
+	 * @param string $text Raw inline Markdown.
+	 * @return string HTML.
+	 */
+	private function md_inline( string $text ): string {
+		// Pull links out first so their URLs survive escaping; restore last.
+		$links = array();
+		$text  = (string) preg_replace_callback(
+			'/\[([^\]]+)\]\(([^)\s]+)\)/',
+			static function ( $m ) use ( &$links ) {
+				$idx           = count( $links );
+				$links[ $idx ] = array(
+					'text' => $m[1],
+					'url'  => $m[2],
+				);
+				return '{{TVLINK' . $idx . '}}';
+			},
+			$text
+		);
+
+		$text = esc_html( $text );
+		$text = (string) preg_replace( '/\*\*([^*]+)\*\*/', '<strong>$1</strong>', $text );
+		$text = (string) preg_replace( '/(?<!\*)\*([^*\s][^*]*)\*(?!\*)/', '<em>$1</em>', $text );
+		$text = (string) preg_replace( '/`([^`]+)`/', '<code>$1</code>', $text );
+
+		return (string) preg_replace_callback(
+			'/\{\{TVLINK(\d+)\}\}/',
+			static function ( $m ) use ( $links ) {
+				$link = $links[ (int) $m[1] ] ?? array(
+					'text' => '',
+					'url'  => '',
+				);
+				return '<a href="' . esc_url( $link['url'] ) . '">' . esc_html( $link['text'] ) . '</a>';
+			},
+			$text
+		);
 	}
 
 	/**
