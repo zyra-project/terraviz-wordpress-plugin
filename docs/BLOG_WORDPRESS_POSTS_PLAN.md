@@ -180,15 +180,19 @@ capability that belongs on the **Event review** screen, not here — see §9.
    View, Edit-in-WordPress) + wire the sidebar tab to built. New-post → WP
    editor. *No node writes; lowest risk.* (PR #33.)
 2. ✅ **Seed WP post from a node post** — `POST /publisher/blog/:id/import-to-wp`
-   creates a WP **draft** (authored by the acting user) from the node post's
-   title + `markdown_to_html(bodyMd)`, writes the `Sync` link meta
-   (`ID`/`SLUG`/`OPTIN`) so the existing WP→node sync updates the same stub on
-   publish, and is idempotent (returns the existing WP post when already linked).
-   `Blog.js` adds a **Create WordPress post** action on unlinked posts that hands
-   the author into the WP editor. The `markdown_to_html` v1 pass covers
-   paragraphs, ATX headings (clamped h2–h6), unordered lists, links, and
-   bold/italic/code, escaping all user text (`wp_kses_post` on the result);
-   tables/ordered-lists/images/fenced-code are a later refinement.
+   creates a WP **draft** (authored by the acting user, gated on
+   `current_user_can('edit_posts')`) from the node post's title + body, writes the
+   `Sync` link meta (`ID`/`SLUG`/`OPTIN`) so the existing WP→node sync updates the
+   same stub on publish, and is idempotent (returns the existing WP post when
+   already linked). `Blog.js` adds a **Create WordPress post** action on unlinked
+   posts that hands the author into the WP editor. The body is seeded as **real
+   Gutenberg blocks** (`markdown_to_blocks`): paragraph / heading (clamped h2–h6)
+   / list blocks, all user text escaped (`md_inline`) and `wp_kses_post`'d inside
+   the block delimiters — not one Classic block. The post's grounding is then
+   appended as **Terraviz embed blocks** (`terraviz/dataset` per linked dataset,
+   `terraviz/tour` for a linked tour, under an "Explore the data" heading), so the
+   linked data is live in the editor from the start. Tables/ordered-lists/images/
+   fenced-code (and richer md→block fidelity) are a later refinement.
 3. **Blog post template** (optional) — starter pattern/template.
 
 Each slice is its own PR. Slice 1 is the deck-faithful list and is independently

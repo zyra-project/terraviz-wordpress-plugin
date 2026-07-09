@@ -1173,10 +1173,11 @@ class PublisherControllerTest extends WP_UnitTestCase {
 			'body'     => (string) wp_json_encode(
 				array(
 					'post' => array(
-						'id'     => 'B1',
-						'slug'   => 'a-story',
-						'title'  => 'A Story',
-						'bodyMd' => "Lead paragraph.\n\n[Read more](https://example.com/x)",
+						'id'         => 'B1',
+						'slug'       => 'a-story',
+						'title'      => 'A Story',
+						'bodyMd'     => "Lead paragraph.\n\n[Read more](https://example.com/x)",
+						'datasetIds' => array( 'sea-surface-temp' ),
 					),
 				)
 			),
@@ -1196,8 +1197,12 @@ class PublisherControllerTest extends WP_UnitTestCase {
 		$this->assertSame( 'draft', $post->post_status );
 		$this->assertSame( 'A Story', $post->post_title );
 		$this->assertSame( (int) $editor, (int) $post->post_author );
-		// Converted body: escaped paragraph + a safe link.
+		// Seeded as real Gutenberg blocks (not one Classic block)…
+		$this->assertStringContainsString( '<!-- wp:paragraph -->', $post->post_content );
+		// …with the escaped link inside the paragraph…
 		$this->assertStringContainsString( '<a href="https://example.com/x">Read more</a>', $post->post_content );
+		// …and a Terraviz dataset embed for the linked grounding.
+		$this->assertStringContainsString( '<!-- wp:terraviz/dataset {"id":"sea-surface-temp"} /-->', $post->post_content );
 		// Link meta wires the two together for the existing sync.
 		$this->assertSame( 'B1', get_post_meta( $wp_id, \Terraviz\Blog\Sync::ID_META, true ) );
 		$this->assertSame( 'a-story', get_post_meta( $wp_id, \Terraviz\Blog\Sync::SLUG_META, true ) );
@@ -1289,5 +1294,20 @@ class PublisherControllerTest extends WP_UnitTestCase {
 		);
 		// A non-http(s) link URL is dropped by esc_url.
 		$this->assertStringContainsString( '<a href="">', $this->controller->markdown_to_html( '[x](javascript:alert(1))' ) );
+	}
+
+	public function test_markdown_to_blocks_emits_gutenberg_markup(): void {
+		$out = $this->controller->markdown_to_blocks( "Intro.\n\n## Section\n\n- one\n- two" );
+
+		// Block delimiters for each block type (not one Classic block).
+		$this->assertStringContainsString( "<!-- wp:paragraph -->\n<p>Intro.</p>\n<!-- /wp:paragraph -->", $out );
+		$this->assertStringContainsString( "<!-- wp:heading -->\n<h2>Section</h2>\n<!-- /wp:heading -->", $out );
+		$this->assertStringContainsString( '<!-- wp:list -->', $out );
+		$this->assertStringContainsString( '<!-- wp:list-item --><li>one</li><!-- /wp:list-item -->', $out );
+		// A deeper heading carries the level attribute.
+		$this->assertStringContainsString(
+			'<!-- wp:heading {"level":3} -->',
+			$this->controller->markdown_to_blocks( '### Sub' )
+		);
 	}
 }

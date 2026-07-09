@@ -912,17 +912,28 @@ final class PublisherController {
 			return $this->respond( $fetched );
 		}
 
-		$post    = ( isset( $fetched['data']['post'] ) && is_array( $fetched['data']['post'] ) ) ? $fetched['data']['post'] : array();
-		$title   = isset( $post['title'] ) ? (string) $post['title'] : '';
-		$body_md = isset( $post['bodyMd'] ) ? (string) $post['bodyMd'] : '';
-		$slug    = isset( $post['slug'] ) ? (string) $post['slug'] : '';
+		$post        = ( isset( $fetched['data']['post'] ) && is_array( $fetched['data']['post'] ) ) ? $fetched['data']['post'] : array();
+		$title       = isset( $post['title'] ) ? (string) $post['title'] : '';
+		$body_md     = isset( $post['bodyMd'] ) ? (string) $post['bodyMd'] : '';
+		$slug        = isset( $post['slug'] ) ? (string) $post['slug'] : '';
+		$dataset_ids = ( isset( $post['datasetIds'] ) && is_array( $post['datasetIds'] ) ) ? $post['datasetIds'] : array();
+		$tour_id     = isset( $post['tourId'] ) ? (string) $post['tourId'] : '';
+
+		// Seed real Gutenberg blocks (not one Classic block): the converted body,
+		// then Terraviz embed blocks for the datasets/tour the node post is
+		// grounded in, so the linked data is live in the editor from the start.
+		$content = $this->markdown_to_blocks( $body_md );
+		$embeds  = $this->embed_blocks( $dataset_ids, $tour_id );
+		if ( '' !== $embeds ) {
+			$content = '' !== $content ? $content . "\n\n" . $embeds : $embeds;
+		}
 
 		$wp_id = wp_insert_post(
 			array(
 				'post_type'    => 'post',
 				'post_status'  => 'draft',
 				'post_title'   => '' !== $title ? $title : __( 'Untitled Terraviz post', 'terraviz' ),
-				'post_content' => wp_kses_post( $this->markdown_to_html( $body_md ) ),
+				'post_content' => $content,
 				'post_author'  => get_current_user_id(),
 			),
 			true
@@ -958,24 +969,26 @@ final class PublisherController {
 	}
 
 	/**
-	 * A minimal Markdown → HTML pass for seeding a WP draft (v1): paragraphs,
-	 * ATX headings (clamped to h2–h6 to nest under the post title), unordered
-	 * lists, inline links, bold/italic, and inline code. All user text is escaped
-	 * before markup is applied, and the caller runs the result through
-	 * `wp_kses_post`. Faithful block conversion (tables, ordered lists, images,
-	 * fenced code) is a later refinement — the author polishes the draft in WP.
+	 * Parse Markdown into a list of block-level descriptors (v1): paragraphs,
+	 * ATX headings (clamped to h2–h6 to nest under the post title), and unordered
+	 * lists, each with inline links/bold/italic/code applied and all user text
+	 * escaped. Shared by {@see markdown_to_html} and {@see markdown_to_blocks}.
+	 * Faithful support for tables, ordered lists, images, and fenced code is a
+	 * later refinement — the author polishes the draft in WP.
 	 *
 	 * @param string $md Markdown source.
-	 * @return string HTML.
+	 * @return array<int,array<string,mixed>> Descriptors: `{type,html}` /
+	 *                                         `{type:'heading',level,html}` /
+	 *                                         `{type:'list',items:string[]}`.
 	 */
-	public function markdown_to_html( string $md ): string {
+	private function parse_markdown_blocks( string $md ): array {
 		$md     = str_replace( array( "\r\n", "\r" ), "\n", $md );
 		$blocks = preg_split( '/\n{2,}/', trim( $md ) );
 		if ( ! is_array( $blocks ) ) {
-			return '';
+			return array();
 		}
 
-		$html = array();
+		$out = array();
 		foreach ( $blocks as $block ) {
 			$block = trim( $block, "\n" );
 			if ( '' === $block ) {
@@ -984,8 +997,11 @@ final class PublisherController {
 
 			// ATX heading (single line).
 			if ( false === strpos( $block, "\n" ) && preg_match( '/^(#{1,6})\s+(.+)$/', $block, $m ) ) {
-				$level  = min( 6, max( 2, strlen( $m[1] ) ) );
-				$html[] = '<h' . $level . '>' . $this->md_inline( $m[2] ) . '</h' . $level . '>';
+				$out[] = array(
+					'type'  => 'heading',
+					'level' => min( 6, max( 2, strlen( $m[1] ) ) ),
+					'html'  => $this->md_inline( $m[2] ),
+				);
 				continue;
 			}
 
@@ -1002,17 +1018,123 @@ final class PublisherController {
 			if ( $is_list ) {
 				$items = array();
 				foreach ( $lines as $line ) {
-					$items[] = '<li>' . $this->md_inline( (string) preg_replace( '/^\s*[-*]\s+/', '', $line ) ) . '</li>';
+					$items[] = $this->md_inline( (string) preg_replace( '/^\s*[-*]\s+/', '', $line ) );
 				}
-				$html[] = '<ul>' . implode( '', $items ) . '</ul>';
+				$out[] = array(
+					'type'  => 'list',
+					'items' => $items,
+				);
 				continue;
 			}
 
 			// Paragraph; soft-wrapped lines join with a break.
-			$html[] = '<p>' . implode( '<br />', array_map( array( $this, 'md_inline' ), $lines ) ) . '</p>';
+			$out[] = array(
+				'type' => 'paragraph',
+				'html' => implode( '<br />', array_map( array( $this, 'md_inline' ), $lines ) ),
+			);
 		}//end foreach
 
+		return $out;
+	}
+
+	/**
+	 * A minimal Markdown → HTML pass (see {@see parse_markdown_blocks}). Kept for
+	 * plain-HTML callers; the blog seed uses {@see markdown_to_blocks}.
+	 *
+	 * @param string $md Markdown source.
+	 * @return string HTML.
+	 */
+	public function markdown_to_html( string $md ): string {
+		$html = array();
+		foreach ( $this->parse_markdown_blocks( $md ) as $block ) {
+			if ( 'heading' === $block['type'] ) {
+				$html[] = '<h' . $block['level'] . '>' . $block['html'] . '</h' . $block['level'] . '>';
+			} elseif ( 'list' === $block['type'] ) {
+				$items  = array_map( static fn( $i ) => '<li>' . $i . '</li>', $block['items'] );
+				$html[] = '<ul>' . implode( '', $items ) . '</ul>';
+			} else {
+				$html[] = '<p>' . $block['html'] . '</p>';
+			}
+		}
+
 		return implode( "\n\n", $html );
+	}
+
+	/**
+	 * A minimal Markdown → **Gutenberg block markup** pass, so a seeded draft
+	 * opens as native paragraph/heading/list blocks rather than a single Classic
+	 * block. Block-delimiter comments are generated here; the escaped inner HTML
+	 * is passed through `wp_kses_post` (the delimiters are added around it, so
+	 * they survive).
+	 *
+	 * @param string $md Markdown source.
+	 * @return string Serialized block markup.
+	 */
+	public function markdown_to_blocks( string $md ): string {
+		$out = array();
+		foreach ( $this->parse_markdown_blocks( $md ) as $block ) {
+			if ( 'heading' === $block['type'] ) {
+				$level = (int) $block['level'];
+				$attrs = 2 === $level ? '' : ' ' . (string) wp_json_encode( array( 'level' => $level ) );
+				$inner = '<h' . $level . '>' . wp_kses_post( $block['html'] ) . '</h' . $level . '>';
+				$out[] = '<!-- wp:heading' . $attrs . " -->\n" . $inner . "\n<!-- /wp:heading -->";
+			} elseif ( 'list' === $block['type'] ) {
+				$items = '';
+				foreach ( $block['items'] as $item ) {
+					$items .= '<!-- wp:list-item --><li>' . wp_kses_post( $item ) . '</li><!-- /wp:list-item -->';
+				}
+				$out[] = "<!-- wp:list -->\n<ul>" . $items . "</ul>\n<!-- /wp:list -->";
+			} else {
+				$out[] = "<!-- wp:paragraph -->\n<p>" . wp_kses_post( $block['html'] ) . "</p>\n<!-- /wp:paragraph -->";
+			}
+		}
+
+		return implode( "\n\n", $out );
+	}
+
+	/**
+	 * Build Terraviz embed blocks for a post's grounding: a `terraviz/dataset`
+	 * block per linked dataset id and a `terraviz/tour` block for a linked tour,
+	 * under a lead-in heading. Empty when there's nothing to embed. Ids are
+	 * reduced to the canonical id charset before they reach the block attribute.
+	 *
+	 * @param array<int,mixed> $dataset_ids Linked dataset ids.
+	 * @param string           $tour_id     Linked tour id, or ''.
+	 * @return string Serialized block markup, or ''.
+	 */
+	private function embed_blocks( array $dataset_ids, string $tour_id ): string {
+		$blocks = array();
+
+		foreach ( $dataset_ids as $id ) {
+			$clean = $this->clean_block_id( (string) $id );
+			if ( '' !== $clean ) {
+				$blocks[] = '<!-- wp:terraviz/dataset ' . (string) wp_json_encode( array( 'id' => $clean ) ) . ' /-->';
+			}
+		}
+
+		$tour = $this->clean_block_id( $tour_id );
+		if ( '' !== $tour ) {
+			$blocks[] = '<!-- wp:terraviz/tour ' . (string) wp_json_encode( array( 'id' => $tour ) ) . ' /-->';
+		}
+
+		if ( empty( $blocks ) ) {
+			return '';
+		}
+
+		$heading = "<!-- wp:heading -->\n<h2>" . esc_html__( 'Explore the data', 'terraviz' ) . "</h2>\n<!-- /wp:heading -->";
+
+		return $heading . "\n\n" . implode( "\n\n", $blocks );
+	}
+
+	/**
+	 * Reduce an id to the canonical dataset/tour id charset (ULID or slug), so a
+	 * node-supplied value can't inject anything into a block attribute.
+	 *
+	 * @param string $id Raw id.
+	 * @return string Cleaned id.
+	 */
+	private function clean_block_id( string $id ): string {
+		return (string) preg_replace( '/[^A-Za-z0-9._:-]/', '', trim( $id ) );
 	}
 
 	/**
