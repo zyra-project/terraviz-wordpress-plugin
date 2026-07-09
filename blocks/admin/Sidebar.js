@@ -80,7 +80,7 @@ export const NAV = [
 				key: 'blog',
 				label: __( 'Blog', 'terraviz' ),
 				tier: 'publish',
-				built: false,
+				built: true,
 			},
 			{
 				key: 'tours',

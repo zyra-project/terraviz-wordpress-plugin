@@ -10,6 +10,7 @@ declare( strict_types = 1 );
 namespace Terraviz\Rest;
 
 use Terraviz\Api\PublishClient;
+use Terraviz\Blog\Sync;
 use Terraviz\Support\Capabilities;
 use Terraviz\Support\Credential;
 use Terraviz\Support\Options;
@@ -52,6 +53,7 @@ final class PublisherController {
 	private const FEEDS_BASE  = '/publisher/feeds';
 	private const HERO_BASE   = '/publisher/featured-hero';
 	private const MEDIA_BASE  = '/publisher/media/youtube-channels';
+	private const BLOG_BASE   = '/publisher/blog';
 
 	/**
 	 * URL-segment pattern for a dataset id (ULID or slug).
@@ -366,6 +368,25 @@ final class PublisherController {
 				'methods'             => 'DELETE',
 				'callback'            => array( $this, 'delete_media_channel' ),
 				'permission_callback' => array( $this, 'require_configure' ),
+			)
+		);
+
+		// Blog list (read). Authoring stays in WordPress (the WP→node sync is the
+		// bridge), so this is read-only here; the sidebar tab is publish-tier.
+		register_rest_route(
+			self::NAMESPACE,
+			self::BLOG_BASE,
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'list_blog' ),
+				'permission_callback' => array( $this, 'require_publish' ),
+				'args'                => array(
+					'status' => array(
+						'type'     => 'string',
+						'required' => false,
+						'enum'     => array( 'draft', 'published' ),
+					),
+				),
 			)
 		);
 	}
@@ -697,6 +718,100 @@ final class PublisherController {
 		}
 
 		return $this->respond( $client->delete_media_channel( (string) $request->get_param( 'id' ) ) );
+	}
+
+	/**
+	 * GET the blog list, each post decorated with `wp_edit_url` when a WordPress
+	 * post is linked to it. Blog authoring lives in WordPress; this read view
+	 * surfaces the node's posts and points each back at its WP editor (via the
+	 * `Sync::ID_META` link the WP→node sync already maintains).
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function list_blog( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		$query  = array();
+		$status = $request->get_param( 'status' );
+		if ( null !== $status && '' !== (string) $status ) {
+			$query['status'] = (string) $status;
+		}
+
+		$result = $client->list_blog( $query );
+
+		if ( $result['ok'] && isset( $result['data']['posts'] ) && is_array( $result['data']['posts'] ) ) {
+			$node_ids = array();
+			foreach ( $result['data']['posts'] as $post ) {
+				if ( is_array( $post ) && isset( $post['id'] ) ) {
+					$node_ids[] = (string) $post['id'];
+				}
+			}
+
+			$edit_map = $this->wp_blog_edit_map( $node_ids );
+			foreach ( $result['data']['posts'] as &$post ) {
+				if ( is_array( $post ) && isset( $post['id'] ) ) {
+					$node_id             = (string) $post['id'];
+					$post['wp_edit_url'] = $edit_map[ $node_id ] ?? null;
+				}
+			}
+			unset( $post );
+		}
+
+		return $this->respond( $result );
+	}
+
+	/**
+	 * Build a map of Terraviz blog-post id → the WP post-editor URL for the
+	 * WordPress post linked to it (via {@see Sync::ID_META}). The lookup is scoped
+	 * to exactly the node ids being listed (a `meta_query` `IN`), so every
+	 * displayed post is resolved — no arbitrary cap — while the query stays
+	 * bounded by the current blog list rather than every linked post on the site.
+	 * Only posts the current user may edit yield a URL; the rest map to null via
+	 * the caller's `??`.
+	 *
+	 * @param array<int,string> $node_ids Terraviz blog-post ids to resolve.
+	 * @return array<string,string>
+	 */
+	private function wp_blog_edit_map( array $node_ids ): array {
+		$map = array();
+
+		$node_ids = array_values( array_unique( array_filter( $node_ids, 'strlen' ) ) );
+		if ( empty( $node_ids ) ) {
+			return $map;
+		}
+
+		$linked = get_posts(
+			array(
+				'post_type'   => 'post',
+				'post_status' => 'any',
+				'numberposts' => count( $node_ids ), // phpcs:ignore WordPress.WP.PostsPerPage.posts_per_page_numberposts -- bounded by the node ids on the current blog page; one WP post links each.
+				'fields'      => 'ids',
+				'meta_query'  => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- scoped IN lookup on the listed node ids to resolve their WP editor links.
+					array(
+						'key'     => Sync::ID_META,
+						'value'   => $node_ids,
+						'compare' => 'IN',
+					),
+				),
+			)
+		);
+
+		foreach ( $linked as $wp_id ) {
+			$node_id = (string) get_post_meta( (int) $wp_id, Sync::ID_META, true );
+			if ( '' === $node_id ) {
+				continue;
+			}
+			$edit_url = get_edit_post_link( (int) $wp_id, 'raw' );
+			if ( $edit_url ) {
+				$map[ $node_id ] = $edit_url;
+			}
+		}
+
+		return $map;
 	}
 
 	/**

@@ -23,6 +23,7 @@ import Overview from './Overview';
 import RightNow from './RightNow';
 import MediaChannels from './MediaChannels';
 import SubTabs from './SubTabs';
+import Blog from './Blog';
 import { deriveStatus } from './status';
 import {
 	listDatasets,
@@ -497,6 +498,8 @@ export default function App( { boot } ) {
 				return <FeedsSection />;
 			case 'right-now':
 				return <RightNow boot={ boot } />;
+			case 'blog':
+				return <Blog boot={ boot } />;
 			default:
 				return <ComingSoon sectionKey={ activeSection } />;
 		}
