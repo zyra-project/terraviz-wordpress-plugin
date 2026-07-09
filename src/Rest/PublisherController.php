@@ -871,6 +871,22 @@ final class PublisherController {
 	 * @return WP_REST_Response
 	 */
 	public function import_blog_to_wp( WP_REST_Request $request ): WP_REST_Response {
+		// This route creates a real WordPress post, and `wp_insert_post()` does
+		// not check capabilities. The publish tier alone is not enough: it can be
+		// held via `manage_terraviz` (configure tier) by a role without WordPress
+		// post-editing rights. Gate on WordPress's own posting capability so a
+		// Terraviz-configurer without `edit_posts` can't author WP content.
+		if ( ! current_user_can( 'edit_posts' ) ) {
+			return new WP_REST_Response(
+				array(
+					'error'   => 'forbidden',
+					'message' => __( 'You need permission to create WordPress posts.', 'terraviz' ),
+					'errors'  => array(),
+				),
+				403
+			);
+		}
+
 		$client = $this->client();
 		if ( null === $client ) {
 			return $this->credential_missing();

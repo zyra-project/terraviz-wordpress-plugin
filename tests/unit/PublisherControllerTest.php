@@ -1250,6 +1250,29 @@ class PublisherControllerTest extends WP_UnitTestCase {
 		$this->assertSame( 'credential_missing', $response->get_data()['error'] );
 	}
 
+	public function test_import_blog_to_wp_requires_wp_post_capability(): void {
+		$this->configure_credential();
+
+		// A configure-tier user (has manage_terraviz) who lacks WordPress
+		// post-editing rights: passes require_publish() but must NOT be able to
+		// create a WP post through this route.
+		$user = self::factory()->user->create( array( 'role' => 'subscriber' ) );
+		get_user_by( 'id', $user )->add_cap( Capabilities::MANAGE );
+		wp_set_current_user( $user );
+
+		$this->assertTrue( $this->controller->require_publish() );
+		$this->assertFalse( current_user_can( 'edit_posts' ) );
+
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+		$response = $this->controller->import_blog_to_wp( $this->import_request( 'B1' ) );
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 403, $response->get_status() );
+		$this->assertSame( 'forbidden', $response->get_data()['error'] );
+		// It must never reach the node, either.
+		$this->assertNotContains( 'GET', $this->sent_methods );
+	}
+
 	public function test_markdown_to_html_converts_common_shapes(): void {
 		$this->assertSame(
 			"<p>A summary.</p>\n\n<p><a href=\"https://example.com/x\">Read more</a></p>",
