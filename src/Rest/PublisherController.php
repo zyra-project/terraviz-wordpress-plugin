@@ -744,7 +744,14 @@ final class PublisherController {
 		$result = $client->list_blog( $query );
 
 		if ( $result['ok'] && isset( $result['data']['posts'] ) && is_array( $result['data']['posts'] ) ) {
-			$edit_map = $this->wp_blog_edit_map();
+			$node_ids = array();
+			foreach ( $result['data']['posts'] as $post ) {
+				if ( is_array( $post ) && isset( $post['id'] ) ) {
+					$node_ids[] = (string) $post['id'];
+				}
+			}
+
+			$edit_map = $this->wp_blog_edit_map( $node_ids );
 			foreach ( $result['data']['posts'] as &$post ) {
 				if ( is_array( $post ) && isset( $post['id'] ) ) {
 					$node_id             = (string) $post['id'];
@@ -759,22 +766,37 @@ final class PublisherController {
 
 	/**
 	 * Build a map of Terraviz blog-post id → the WP post-editor URL for the
-	 * WordPress post linked to it (via {@see Sync::ID_META}). Only posts the
-	 * current user may edit yield a URL; others map to null via the caller's
-	 * `??`. Bounded by the number of linked posts on the site.
+	 * WordPress post linked to it (via {@see Sync::ID_META}). The lookup is scoped
+	 * to exactly the node ids being listed (a `meta_query` `IN`), so every
+	 * displayed post is resolved — no arbitrary cap — while the query stays
+	 * bounded by the current blog list rather than every linked post on the site.
+	 * Only posts the current user may edit yield a URL; the rest map to null via
+	 * the caller's `??`.
 	 *
+	 * @param array<int,string> $node_ids Terraviz blog-post ids to resolve.
 	 * @return array<string,string>
 	 */
-	private function wp_blog_edit_map(): array {
+	private function wp_blog_edit_map( array $node_ids ): array {
 		$map = array();
+
+		$node_ids = array_values( array_unique( array_filter( $node_ids, 'strlen' ) ) );
+		if ( empty( $node_ids ) ) {
+			return $map;
+		}
 
 		$linked = get_posts(
 			array(
 				'post_type'   => 'post',
 				'post_status' => 'any',
-				'numberposts' => 500, // phpcs:ignore WordPress.WP.PostsPerPage.posts_per_page_numberposts -- a one-time admin lookup of Terraviz-linked posts, bounded well above any realistic count.
+				'numberposts' => count( $node_ids ), // phpcs:ignore WordPress.WP.PostsPerPage.posts_per_page_numberposts -- bounded by the node ids on the current blog page; one WP post links each.
 				'fields'      => 'ids',
-				'meta_key'    => Sync::ID_META, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- bounded admin lookup to link node posts to their WP editor.
+				'meta_query'  => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- scoped IN lookup on the listed node ids to resolve their WP editor links.
+					array(
+						'key'     => Sync::ID_META,
+						'value'   => $node_ids,
+						'compare' => 'IN',
+					),
+				),
 			)
 		);
 

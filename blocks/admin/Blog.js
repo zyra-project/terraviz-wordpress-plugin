@@ -254,9 +254,9 @@ export default function Blog( { boot } ) {
 										) }`
 								  )
 								: null;
-						const editUrl = safeHttpUrl( post.wp_edit_url )
-							? post.wp_edit_url
-							: null;
+						// Use the sanitized (trimmed, http(s)-validated) URL, not the
+						// raw meta value.
+						const editUrl = safeHttpUrl( post.wp_edit_url );
 						const actions = [];
 						if ( editUrl ) {
 							actions.push(
