@@ -61,6 +61,12 @@ final class PublisherController {
 	private const ID_PATTERN = '(?P<id>[A-Za-z0-9._-]+)';
 
 	/**
+	 * Cap on a sideloaded cover image (bytes) — `wp_safe_remote_get` reads the
+	 * body into memory, so bound it well above any realistic web image.
+	 */
+	private const MAX_COVER_BYTES = 12582912;
+
+	/**
 	 * Free-text / reference string fields accepted on a dataset body.
 	 */
 	private const STRING_FIELDS = array(
@@ -918,6 +924,8 @@ final class PublisherController {
 		$slug        = isset( $post['slug'] ) ? (string) $post['slug'] : '';
 		$dataset_ids = ( isset( $post['datasetIds'] ) && is_array( $post['datasetIds'] ) ) ? $post['datasetIds'] : array();
 		$tour_id     = isset( $post['tourId'] ) ? (string) $post['tourId'] : '';
+		$cover_url   = isset( $post['coverImageUrl'] ) ? (string) $post['coverImageUrl'] : '';
+		$cover_alt   = isset( $post['coverImageAlt'] ) ? sanitize_text_field( (string) $post['coverImageAlt'] ) : '';
 
 		// Seed real Gutenberg blocks (not one Classic block): the converted body,
 		// then Terraviz embed blocks for the datasets/tour the node post is
@@ -959,6 +967,15 @@ final class PublisherController {
 			update_post_meta( $wp_id, Sync::SLUG_META, $slug );
 		}
 
+		// Bring the node post's cover image across as the WP featured image
+		// (best-effort — a failed sideload just leaves the draft without one).
+		if ( '' !== $cover_url ) {
+			$attachment_id = $this->sideload_image( $cover_url, (int) $wp_id, $cover_alt );
+			if ( $attachment_id > 0 ) {
+				set_post_thumbnail( (int) $wp_id, $attachment_id );
+			}
+		}
+
 		return new WP_REST_Response(
 			array(
 				'wpId'    => (int) $wp_id,
@@ -966,6 +983,93 @@ final class PublisherController {
 			),
 			201
 		);
+	}
+
+	/**
+	 * Download an http(s) image into the media library and return its attachment
+	 * id (0 on any failure — the caller treats a cover image as best-effort).
+	 *
+	 * The fetch uses `wp_safe_remote_get` (rejects private/reserved hosts), so it
+	 * keeps the plugin's VIP-clean, no-SSRF posture even though the URL is a
+	 * curator-chosen suggestion that may point at a third-party source (NASA
+	 * Worldview, a news photo, …). Only raster web image types are accepted, and
+	 * the body is size-capped.
+	 *
+	 * @param string $url       Image URL.
+	 * @param int    $parent_id Post to attach to.
+	 * @param string $alt       Alt text (already sanitized), or ''.
+	 * @return int Attachment id, or 0.
+	 */
+	private function sideload_image( string $url, int $parent_id, string $alt ): int {
+		$url = esc_url_raw( $url );
+		if ( '' === $url || ! preg_match( '#^https?://#i', $url ) ) {
+			return 0;
+		}
+
+		$response = wp_safe_remote_get(
+			$url,
+			array(
+				'timeout'            => 15,
+				'redirection'        => 2,
+				'reject_unsafe_urls' => true,
+			)
+		);
+		if ( is_wp_error( $response ) || 200 !== (int) wp_remote_retrieve_response_code( $response ) ) {
+			return 0;
+		}
+
+		$body = (string) wp_remote_retrieve_body( $response );
+		if ( '' === $body || strlen( $body ) > self::MAX_COVER_BYTES ) {
+			return 0;
+		}
+
+		$by_type = array(
+			'image/jpeg' => 'jpg',
+			'image/png'  => 'png',
+			'image/gif'  => 'gif',
+			'image/webp' => 'webp',
+		);
+		$type    = (string) wp_remote_retrieve_header( $response, 'content-type' );
+		$type    = strtolower( trim( explode( ';', $type )[0] ) );
+		if ( ! isset( $by_type[ $type ] ) ) {
+			return 0;
+		}
+		$ext = $by_type[ $type ];
+
+		// Name from the URL path, else a generic one; always force the resolved
+		// extension so the stored file matches its verified type.
+		$name = sanitize_file_name( (string) wp_basename( (string) wp_parse_url( $url, PHP_URL_PATH ) ) );
+		$name = '' !== $name ? (string) preg_replace( '/\.[A-Za-z0-9]+$/', '', $name ) : 'terraviz-cover';
+		$name = ( '' !== $name ? $name : 'terraviz-cover' ) . '.' . $ext;
+
+		$upload = wp_upload_bits( $name, null, $body );
+		if ( ! empty( $upload['error'] ) || empty( $upload['file'] ) ) {
+			return 0;
+		}
+
+		$attachment_id = wp_insert_attachment(
+			array(
+				'post_mime_type' => $type,
+				'post_title'     => '' !== $alt ? $alt : $name,
+				'post_content'   => '',
+				'post_status'    => 'inherit',
+			),
+			$upload['file'],
+			$parent_id,
+			true
+		);
+		if ( is_wp_error( $attachment_id ) || (int) $attachment_id <= 0 ) {
+			return 0;
+		}
+
+		require_once ABSPATH . 'wp-admin/includes/image.php';
+		wp_update_attachment_metadata( (int) $attachment_id, wp_generate_attachment_metadata( (int) $attachment_id, $upload['file'] ) );
+
+		if ( '' !== $alt ) {
+			update_post_meta( (int) $attachment_id, '_wp_attachment_image_alt', $alt );
+		}
+
+		return (int) $attachment_id;
 	}
 
 	/**
@@ -995,12 +1099,33 @@ final class PublisherController {
 				continue;
 			}
 
+			$single = false === strpos( $block, "\n" );
+
 			// ATX heading (single line).
-			if ( false === strpos( $block, "\n" ) && preg_match( '/^(#{1,6})\s+(.+)$/', $block, $m ) ) {
+			if ( $single && preg_match( '/^(#{1,6})\s+(.+)$/', $block, $m ) ) {
 				$out[] = array(
 					'type'  => 'heading',
 					'level' => min( 6, max( 2, strlen( $m[1] ) ) ),
 					'html'  => $this->md_inline( $m[2] ),
+				);
+				continue;
+			}
+
+			// Standalone image: `![alt](url)` on its own → an image block.
+			if ( $single && preg_match( '/^!\[([^\]]*)\]\(([^)\s]+)\)$/', $block, $m ) ) {
+				$out[] = array(
+					'type' => 'image',
+					'url'  => $m[2],
+					'alt'  => $m[1],
+				);
+				continue;
+			}
+
+			// Standalone video URL (YouTube / Vimeo) → an embed block.
+			if ( $single && $this->is_video_url( $block ) ) {
+				$out[] = array(
+					'type' => 'embed',
+					'url'  => $block,
 				);
 				continue;
 			}
@@ -1052,12 +1177,17 @@ final class PublisherController {
 			} elseif ( 'list' === $block['type'] ) {
 				$items  = array_map( static fn( $i ) => '<li>' . $i . '</li>', $block['items'] );
 				$html[] = '<ul>' . implode( '', $items ) . '</ul>';
+			} elseif ( 'image' === $block['type'] ) {
+				$html[] = $this->image_html( $block['url'], $block['alt'] );
+			} elseif ( 'embed' === $block['type'] ) {
+				$safe   = esc_url( $block['url'] );
+				$html[] = '' !== $safe ? '<p><a href="' . $safe . '">' . esc_html( $block['url'] ) . '</a></p>' : '';
 			} else {
 				$html[] = '<p>' . $block['html'] . '</p>';
 			}
 		}
 
-		return implode( "\n\n", $html );
+		return implode( "\n\n", array_filter( $html, static fn( $h ) => '' !== $h ) );
 	}
 
 	/**
@@ -1084,12 +1214,75 @@ final class PublisherController {
 					$items .= '<!-- wp:list-item --><li>' . wp_kses_post( $item ) . '</li><!-- /wp:list-item -->';
 				}
 				$out[] = "<!-- wp:list -->\n<ul>" . $items . "</ul>\n<!-- /wp:list -->";
+			} elseif ( 'image' === $block['type'] ) {
+				$img = $this->image_html( $block['url'], $block['alt'] );
+				if ( '' !== $img ) {
+					$out[] = "<!-- wp:image -->\n<figure class=\"wp-block-image\">" . $img . "</figure>\n<!-- /wp:image -->";
+				}
+			} elseif ( 'embed' === $block['type'] ) {
+				$embed = $this->embed_block( $block['url'] );
+				if ( '' !== $embed ) {
+					$out[] = $embed;
+				}
 			} else {
 				$out[] = "<!-- wp:paragraph -->\n<p>" . wp_kses_post( $block['html'] ) . "</p>\n<!-- /wp:paragraph -->";
-			}
-		}
+			}//end if
+		}//end foreach
 
 		return implode( "\n\n", $out );
+	}
+
+	/**
+	 * An `<img>` from a Markdown image, with the URL `esc_url`'d (unsafe schemes
+	 * dropped → no tag) and the alt escaped. Returns '' when the URL isn't safe.
+	 *
+	 * @param string $url Image URL.
+	 * @param string $alt Alt text.
+	 * @return string `<img …/>`, or ''.
+	 */
+	private function image_html( string $url, string $alt ): string {
+		$safe = esc_url( $url );
+		if ( '' === $safe ) {
+			return '';
+		}
+
+		return '<img src="' . $safe . '" alt="' . esc_attr( $alt ) . '"/>';
+	}
+
+	/**
+	 * Whether a string is a bare http(s) URL to a supported video host, so it can
+	 * become an embed block rather than a plain link.
+	 *
+	 * @param string $url Candidate URL.
+	 */
+	private function is_video_url( string $url ): bool {
+		if ( ! preg_match( '#^https?://#i', $url ) || preg_match( '/\s/', $url ) ) {
+			return false;
+		}
+		$host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
+
+		return (bool) preg_match( '/(^|\.)(youtube\.com|youtu\.be|vimeo\.com)$/', $host );
+	}
+
+	/**
+	 * A `core/embed` block for a supported video URL, or '' when the URL isn't a
+	 * safe http(s) URL. The editor hydrates the provider on open.
+	 *
+	 * @param string $url Video URL.
+	 * @return string Serialized embed block, or ''.
+	 */
+	private function embed_block( string $url ): string {
+		$safe = esc_url( $url );
+		if ( '' === $safe ) {
+			return '';
+		}
+		$attrs = (string) wp_json_encode( array( 'url' => $safe ) );
+
+		return '<!-- wp:embed ' . $attrs . " -->\n" .
+			'<figure class="wp-block-embed"><div class="wp-block-embed__wrapper">' . "\n" .
+			$safe . "\n" .
+			'</div></figure>' . "\n" .
+			'<!-- /wp:embed -->';
 	}
 
 	/**
@@ -1138,24 +1331,41 @@ final class PublisherController {
 	}
 
 	/**
-	 * Inline Markdown for one text run: links, bold, italic, code — with all
-	 * user text HTML-escaped and link URLs passed through `esc_url`.
+	 * Inline Markdown for one text run: images, links, bold, italic, code — with
+	 * all user text HTML-escaped and every URL passed through `esc_url`. Images
+	 * are pulled out before links (an image contains link syntax) so both round-
+	 * trip cleanly through escaping.
 	 *
 	 * @param string $text Raw inline Markdown.
 	 * @return string HTML.
 	 */
 	private function md_inline( string $text ): string {
-		// Pull links out first so their URLs survive escaping; restore last.
-		$links = array();
-		$text  = (string) preg_replace_callback(
-			'/\[([^\]]+)\]\(([^)\s]+)\)/',
-			static function ( $m ) use ( &$links ) {
-				$idx           = count( $links );
-				$links[ $idx ] = array(
+		$tokens = array();
+
+		$text = (string) preg_replace_callback(
+			'/!\[([^\]]*)\]\(([^)\s]+)\)/',
+			static function ( $m ) use ( &$tokens ) {
+				$idx            = count( $tokens );
+				$tokens[ $idx ] = array(
+					'kind' => 'img',
 					'text' => $m[1],
 					'url'  => $m[2],
 				);
-				return '{{TVLINK' . $idx . '}}';
+				return '{{TVTOK' . $idx . '}}';
+			},
+			$text
+		);
+
+		$text = (string) preg_replace_callback(
+			'/\[([^\]]+)\]\(([^)\s]+)\)/',
+			static function ( $m ) use ( &$tokens ) {
+				$idx            = count( $tokens );
+				$tokens[ $idx ] = array(
+					'kind' => 'a',
+					'text' => $m[1],
+					'url'  => $m[2],
+				);
+				return '{{TVTOK' . $idx . '}}';
 			},
 			$text
 		);
@@ -1166,13 +1376,17 @@ final class PublisherController {
 		$text = (string) preg_replace( '/`([^`]+)`/', '<code>$1</code>', $text );
 
 		return (string) preg_replace_callback(
-			'/\{\{TVLINK(\d+)\}\}/',
-			static function ( $m ) use ( $links ) {
-				$link = $links[ (int) $m[1] ] ?? array(
+			'/\{\{TVTOK(\d+)\}\}/',
+			function ( $m ) use ( $tokens ) {
+				$tok = $tokens[ (int) $m[1] ] ?? array(
+					'kind' => 'a',
 					'text' => '',
 					'url'  => '',
 				);
-				return '<a href="' . esc_url( $link['url'] ) . '">' . esc_html( $link['text'] ) . '</a>';
+				if ( 'img' === $tok['kind'] ) {
+					return $this->image_html( $tok['url'], $tok['text'] );
+				}
+				return '<a href="' . esc_url( $tok['url'] ) . '">' . esc_html( $tok['text'] ) . '</a>';
 			},
 			$text
 		);

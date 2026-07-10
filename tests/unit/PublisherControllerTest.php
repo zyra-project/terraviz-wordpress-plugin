@@ -1310,4 +1310,121 @@ class PublisherControllerTest extends WP_UnitTestCase {
 			$this->controller->markdown_to_blocks( '### Sub' )
 		);
 	}
+
+	public function test_markdown_to_blocks_converts_media_shapes(): void {
+		$md  = "![Cover shot](https://ex.com/cover.png)\n\n"
+			. "https://www.youtube.com/watch?v=abc123\n\n"
+			. 'Text with an ![inline](https://ex.com/a.jpg) image.';
+		$out = $this->controller->markdown_to_blocks( $md );
+
+		// A standalone image line becomes an image block.
+		$this->assertStringContainsString( '<!-- wp:image -->', $out );
+		$this->assertStringContainsString(
+			'<figure class="wp-block-image"><img src="https://ex.com/cover.png" alt="Cover shot"/></figure>',
+			$out
+		);
+		// A bare video URL becomes an embed block.
+		$this->assertStringContainsString( '<!-- wp:embed', $out );
+		$this->assertStringContainsString( 'class="wp-block-embed"', $out );
+		// An inline image stays inside its paragraph.
+		$this->assertStringContainsString(
+			'<p>Text with an <img src="https://ex.com/a.jpg" alt="inline"/> image.</p>',
+			$out
+		);
+	}
+
+	public function test_markdown_media_drops_unsafe_urls(): void {
+		// An unsafe image scheme yields no <img> (and so no image block at all).
+		$blocks = $this->controller->markdown_to_blocks( '![x](javascript:alert(1))' );
+		$this->assertStringNotContainsString( '<!-- wp:image -->', $blocks );
+		$this->assertStringNotContainsString( '<img', $blocks );
+
+		$html = $this->controller->markdown_to_html( '![x](javascript:alert(1))' );
+		$this->assertStringNotContainsString( '<img', $html );
+	}
+
+	public function test_import_blog_seeds_featured_image_from_cover(): void {
+		$this->configure_credential();
+		$editor = self::factory()->user->create( array( 'role' => 'editor' ) );
+		wp_set_current_user( $editor );
+
+		$cover_url = 'https://example.com/media/cover.png';
+		// A 1x1 PNG so wp_generate_attachment_metadata can read real dimensions.
+		$png = base64_decode( // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode
+			'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+		);
+
+		// The node's get_blog returns JSON; the cover fetch returns image bytes.
+		// Both are GET, so discriminate on the URL.
+		$image_filter = function ( $pre, $args, $url ) use ( $cover_url, $png ) {
+			if ( (string) $url === $cover_url ) {
+				return array(
+					'response' => array( 'code' => 200 ),
+					'headers'  => array( 'content-type' => 'image/png' ),
+					'body'     => $png,
+				);
+			}
+			return array(
+				'response' => array( 'code' => 200 ),
+				'body'     => (string) wp_json_encode(
+					array(
+						'post' => array(
+							'id'            => 'B1',
+							'slug'          => 'a-story',
+							'title'         => 'A Story',
+							'bodyMd'        => 'Lead paragraph.',
+							'coverImageUrl' => $cover_url,
+							'coverImageAlt' => 'A wide cover',
+						),
+					)
+				),
+			);
+		};
+
+		add_filter( 'pre_http_request', $image_filter, 10, 3 );
+		$response = $this->controller->import_blog_to_wp( $this->import_request( 'B1' ) );
+		remove_filter( 'pre_http_request', $image_filter, 10 );
+
+		$this->assertSame( 201, $response->get_status() );
+		$wp_id = (int) $response->get_data()['wpId'];
+		$this->assertGreaterThan( 0, $wp_id );
+
+		$thumb_id = get_post_thumbnail_id( $wp_id );
+		$this->assertGreaterThan( 0, (int) $thumb_id );
+		$this->assertSame( 'image/png', get_post_mime_type( $thumb_id ) );
+		$this->assertSame( (int) $wp_id, (int) get_post( $thumb_id )->post_parent );
+		$this->assertSame( 'A wide cover', get_post_meta( $thumb_id, '_wp_attachment_image_alt', true ) );
+	}
+
+	public function test_import_blog_ignores_unsafe_cover_and_still_seeds_post(): void {
+		$this->configure_credential();
+		$editor = self::factory()->user->create( array( 'role' => 'editor' ) );
+		wp_set_current_user( $editor );
+
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+		$this->http_by_method['GET'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode(
+				array(
+					'post' => array(
+						'id'            => 'B1',
+						'slug'          => 'a-story',
+						'title'         => 'A Story',
+						'bodyMd'        => 'Lead paragraph.',
+						'coverImageUrl' => 'javascript:alert(1)',
+					),
+				)
+			),
+		);
+
+		$response = $this->controller->import_blog_to_wp( $this->import_request( 'B1' ) );
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		// The post is still created; an unsafe cover URL is simply dropped, and no
+		// featured image is set (only the get_blog GET was sent).
+		$this->assertSame( 201, $response->get_status() );
+		$wp_id = (int) $response->get_data()['wpId'];
+		$this->assertSame( 0, (int) get_post_thumbnail_id( $wp_id ) );
+		$this->assertCount( 1, $this->sent_methods );
+	}
 }
