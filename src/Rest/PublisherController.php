@@ -61,6 +61,12 @@ final class PublisherController {
 	private const ID_PATTERN = '(?P<id>[A-Za-z0-9._-]+)';
 
 	/**
+	 * Cap on a sideloaded cover image (bytes) — `wp_safe_remote_get` reads the
+	 * body into memory, so bound it well above any realistic web image.
+	 */
+	private const MAX_COVER_BYTES = 12582912;
+
+	/**
 	 * Free-text / reference string fields accepted on a dataset body.
 	 */
 	private const STRING_FIELDS = array(
@@ -387,6 +393,20 @@ final class PublisherController {
 						'enum'     => array( 'draft', 'published' ),
 					),
 				),
+			)
+		);
+
+		// Seed a WordPress post from a node blog post ("Terraviz drives the
+		// initial content"): creates a WP draft prefilled from the node post and
+		// links the two so the existing WP→node sync carries edits back. A write,
+		// so publish-tier.
+		register_rest_route(
+			self::NAMESPACE,
+			self::BLOG_BASE . '/' . self::ID_PATTERN . '/import-to-wp',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'import_blog_to_wp' ),
+				'permission_callback' => array( $this, 'require_publish' ),
 			)
 		);
 	}
@@ -812,6 +832,584 @@ final class PublisherController {
 		}
 
 		return $map;
+	}
+
+	/**
+	 * The WP post id linked to a node blog-post id (via {@see Sync::ID_META}), or
+	 * 0 when none. Used to avoid seeding a duplicate WP post for an already-linked
+	 * node post.
+	 *
+	 * @param string $node_id Terraviz blog-post id.
+	 * @return int WP post id, or 0.
+	 */
+	private function find_linked_wp_post( string $node_id ): int {
+		if ( '' === $node_id ) {
+			return 0;
+		}
+
+		$ids = get_posts(
+			array(
+				'post_type'   => 'post',
+				'post_status' => 'any',
+				'numberposts' => 1,
+				'fields'      => 'ids',
+				'meta_query'  => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- single-id lookup to detect an existing link.
+					array(
+						'key'   => Sync::ID_META,
+						'value' => $node_id,
+					),
+				),
+			)
+		);
+
+		return ! empty( $ids ) ? (int) $ids[0] : 0;
+	}
+
+	/**
+	 * POST seed a WordPress draft post from a node blog post. Fetches the node
+	 * post, creates a WP draft (authored by the acting user) prefilled with its
+	 * title + converted markdown body, and writes the {@see Sync} link meta so the
+	 * existing WP→node sync treats the two as one object (edits on the WP side
+	 * carry back on publish). If the node post is already linked to a WP post, it
+	 * returns that one rather than duplicating.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function import_blog_to_wp( WP_REST_Request $request ): WP_REST_Response {
+		// This route creates a real WordPress post, and `wp_insert_post()` does
+		// not check capabilities. The publish tier alone is not enough: it can be
+		// held via `manage_terraviz` (configure tier) by a role without WordPress
+		// post-editing rights. Gate on WordPress's own posting capability so a
+		// Terraviz-configurer without `edit_posts` can't author WP content.
+		if ( ! current_user_can( 'edit_posts' ) ) {
+			return new WP_REST_Response(
+				array(
+					'error'   => 'forbidden',
+					'message' => __( 'You need permission to create WordPress posts.', 'terraviz' ),
+					'errors'  => array(),
+				),
+				403
+			);
+		}
+
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		$node_id = (string) $request->get_param( 'id' );
+
+		// Don't create a second WP post for an already-linked node post.
+		$existing = $this->find_linked_wp_post( $node_id );
+		if ( $existing > 0 ) {
+			return new WP_REST_Response(
+				array(
+					'wpId'           => $existing,
+					'editUrl'        => (string) get_edit_post_link( $existing, 'raw' ),
+					'already_linked' => true,
+				),
+				200
+			);
+		}
+
+		$fetched = $client->get_blog( $node_id );
+		if ( ! $fetched['ok'] ) {
+			return $this->respond( $fetched );
+		}
+
+		$post        = ( isset( $fetched['data']['post'] ) && is_array( $fetched['data']['post'] ) ) ? $fetched['data']['post'] : array();
+		$title       = isset( $post['title'] ) ? (string) $post['title'] : '';
+		$body_md     = isset( $post['bodyMd'] ) ? (string) $post['bodyMd'] : '';
+		$slug        = isset( $post['slug'] ) ? (string) $post['slug'] : '';
+		$dataset_ids = ( isset( $post['datasetIds'] ) && is_array( $post['datasetIds'] ) ) ? $post['datasetIds'] : array();
+		$tour_id     = isset( $post['tourId'] ) ? (string) $post['tourId'] : '';
+		$cover_url   = isset( $post['coverImageUrl'] ) ? (string) $post['coverImageUrl'] : '';
+		$cover_alt   = isset( $post['coverImageAlt'] ) ? sanitize_text_field( (string) $post['coverImageAlt'] ) : '';
+
+		// Seed real Gutenberg blocks (not one Classic block): the converted body,
+		// then Terraviz embed blocks for the datasets/tour the node post is
+		// grounded in, so the linked data is live in the editor from the start.
+		$content = $this->markdown_to_blocks( $body_md );
+		$embeds  = $this->embed_blocks( $dataset_ids, $tour_id );
+		if ( '' !== $embeds ) {
+			$content = '' !== $content ? $content . "\n\n" . $embeds : $embeds;
+		}
+
+		$wp_id = wp_insert_post(
+			array(
+				'post_type'    => 'post',
+				'post_status'  => 'draft',
+				'post_title'   => '' !== $title ? $title : __( 'Untitled Terraviz post', 'terraviz' ),
+				'post_content' => $content,
+				'post_author'  => get_current_user_id(),
+			),
+			true
+		);
+
+		if ( is_wp_error( $wp_id ) ) {
+			return new WP_REST_Response(
+				array(
+					'error'   => 'wp_insert_failed',
+					'message' => $wp_id->get_error_message(),
+					'errors'  => array(),
+				),
+				500
+			);
+		}
+
+		// Link the two so the WP→node sync updates the existing stub (idempotent
+		// on the returned node id) rather than creating a duplicate, and so a WP
+		// publish carries the edited body back with a link home.
+		update_post_meta( $wp_id, Sync::ID_META, $node_id );
+		update_post_meta( $wp_id, Sync::OPTIN_META, true );
+		if ( '' !== $slug ) {
+			update_post_meta( $wp_id, Sync::SLUG_META, $slug );
+		}
+
+		// Bring the node post's cover image across as the WP featured image
+		// (best-effort — a failed sideload just leaves the draft without one).
+		if ( '' !== $cover_url ) {
+			$attachment_id = $this->sideload_image( $cover_url, (int) $wp_id, $cover_alt );
+			if ( $attachment_id > 0 ) {
+				set_post_thumbnail( (int) $wp_id, $attachment_id );
+			}
+		}
+
+		return new WP_REST_Response(
+			array(
+				'wpId'    => (int) $wp_id,
+				'editUrl' => (string) get_edit_post_link( (int) $wp_id, 'raw' ),
+			),
+			201
+		);
+	}
+
+	/**
+	 * Download an http(s) image into the media library and return its attachment
+	 * id (0 on any failure — the caller treats a cover image as best-effort).
+	 *
+	 * The fetch uses `wp_safe_remote_get` (rejects private/reserved hosts), so it
+	 * keeps the plugin's VIP-clean, no-SSRF posture even though the URL is a
+	 * curator-chosen suggestion that may point at a third-party source (NASA
+	 * Worldview, a news photo, …). Only raster web image types are accepted, and
+	 * the body is size-capped.
+	 *
+	 * @param string $url       Image URL.
+	 * @param int    $parent_id Post to attach to.
+	 * @param string $alt       Alt text (already sanitized), or ''.
+	 * @return int Attachment id, or 0.
+	 */
+	private function sideload_image( string $url, int $parent_id, string $alt ): int {
+		$url = esc_url_raw( $url );
+		if ( '' === $url || ! preg_match( '#^https?://#i', $url ) ) {
+			return 0;
+		}
+
+		$response = wp_safe_remote_get(
+			$url,
+			array(
+				'timeout'             => 15,
+				'redirection'         => 2,
+				'reject_unsafe_urls'  => true,
+				// Hard-cap the download at the HTTP layer (+1 so an over-cap body
+				// trips the strlen check below) so a huge response can't exhaust
+				// memory before we ever measure it.
+				'limit_response_size' => self::MAX_COVER_BYTES + 1,
+			)
+		);
+		if ( is_wp_error( $response ) || 200 !== (int) wp_remote_retrieve_response_code( $response ) ) {
+			return 0;
+		}
+
+		$body = (string) wp_remote_retrieve_body( $response );
+		if ( '' === $body || strlen( $body ) > self::MAX_COVER_BYTES ) {
+			return 0;
+		}
+
+		$by_type = array(
+			'image/jpeg' => 'jpg',
+			'image/png'  => 'png',
+			'image/gif'  => 'gif',
+			'image/webp' => 'webp',
+		);
+		// A cheap early-out on the advertised type before writing anything to disk;
+		// the authoritative check is against the stored bytes, below.
+		$type = (string) wp_remote_retrieve_header( $response, 'content-type' );
+		$type = strtolower( trim( explode( ';', $type )[0] ) );
+		if ( ! isset( $by_type[ $type ] ) ) {
+			return 0;
+		}
+		$ext = $by_type[ $type ];
+
+		// Name from the URL path, else a generic one; always force the resolved
+		// extension so the stored file matches its verified type.
+		$name = sanitize_file_name( (string) wp_basename( (string) wp_parse_url( $url, PHP_URL_PATH ) ) );
+		$name = '' !== $name ? (string) preg_replace( '/\.[A-Za-z0-9]+$/', '', $name ) : 'terraviz-cover';
+		$name = ( '' !== $name ? $name : 'terraviz-cover' ) . '.' . $ext;
+
+		$upload = wp_upload_bits( $name, null, $body );
+		if ( ! empty( $upload['error'] ) || empty( $upload['file'] ) ) {
+			return 0;
+		}
+
+		// Trust the *stored bytes*, not the response header: a lying `content-type`
+		// could smuggle a non-image onto disk. Verify the real type of the file
+		// and require it to be one of the accepted raster types.
+		$checked   = wp_check_filetype_and_ext( $upload['file'], $name );
+		$real_type = ( is_array( $checked ) && ! empty( $checked['type'] ) ) ? (string) $checked['type'] : '';
+		if ( ! isset( $by_type[ $real_type ] ) ) {
+			wp_delete_file( $upload['file'] );
+			return 0;
+		}
+		$type = $real_type;
+
+		$attachment_id = wp_insert_attachment(
+			array(
+				'post_mime_type' => $type,
+				'post_title'     => '' !== $alt ? $alt : $name,
+				'post_content'   => '',
+				'post_status'    => 'inherit',
+			),
+			$upload['file'],
+			$parent_id,
+			true
+		);
+		if ( is_wp_error( $attachment_id ) || (int) $attachment_id <= 0 ) {
+			wp_delete_file( $upload['file'] );
+			return 0;
+		}
+
+		require_once ABSPATH . 'wp-admin/includes/image.php';
+		wp_update_attachment_metadata( (int) $attachment_id, wp_generate_attachment_metadata( (int) $attachment_id, $upload['file'] ) );
+
+		if ( '' !== $alt ) {
+			update_post_meta( (int) $attachment_id, '_wp_attachment_image_alt', $alt );
+		}
+
+		return (int) $attachment_id;
+	}
+
+	/**
+	 * Parse Markdown into a list of block-level descriptors (v1): paragraphs,
+	 * ATX headings (clamped to h2–h6 to nest under the post title), and unordered
+	 * lists, each with inline links/bold/italic/code applied and all user text
+	 * escaped. Shared by {@see markdown_to_html} and {@see markdown_to_blocks}.
+	 * Faithful support for tables, ordered lists, images, and fenced code is a
+	 * later refinement — the author polishes the draft in WP.
+	 *
+	 * @param string $md Markdown source.
+	 * @return array<int,array<string,mixed>> Descriptors: `{type,html}` /
+	 *                                         `{type:'heading',level,html}` /
+	 *                                         `{type:'list',items:string[]}`.
+	 */
+	private function parse_markdown_blocks( string $md ): array {
+		$md     = str_replace( array( "\r\n", "\r" ), "\n", $md );
+		$blocks = preg_split( '/\n{2,}/', trim( $md ) );
+		if ( ! is_array( $blocks ) ) {
+			return array();
+		}
+
+		$out = array();
+		foreach ( $blocks as $block ) {
+			$block = trim( $block, "\n" );
+			if ( '' === $block ) {
+				continue;
+			}
+
+			$single = false === strpos( $block, "\n" );
+
+			// ATX heading (single line).
+			if ( $single && preg_match( '/^(#{1,6})\s+(.+)$/', $block, $m ) ) {
+				$out[] = array(
+					'type'  => 'heading',
+					'level' => min( 6, max( 2, strlen( $m[1] ) ) ),
+					'html'  => $this->md_inline( $m[2] ),
+				);
+				continue;
+			}
+
+			// Standalone image: `![alt](url)` on its own → an image block.
+			if ( $single && preg_match( '/^!\[([^\]]*)\]\(([^)\s]+)\)$/', $block, $m ) ) {
+				$out[] = array(
+					'type' => 'image',
+					'url'  => $m[2],
+					'alt'  => $m[1],
+				);
+				continue;
+			}
+
+			// Standalone video URL (YouTube / Vimeo) → an embed block.
+			if ( $single && $this->is_video_url( $block ) ) {
+				$out[] = array(
+					'type' => 'embed',
+					'url'  => $block,
+				);
+				continue;
+			}
+
+			$lines = explode( "\n", $block );
+
+			// Unordered list: every line is a `- ` / `* ` item.
+			$is_list = true;
+			foreach ( $lines as $line ) {
+				if ( ! preg_match( '/^\s*[-*]\s+\S/', $line ) ) {
+					$is_list = false;
+					break;
+				}
+			}
+			if ( $is_list ) {
+				$items = array();
+				foreach ( $lines as $line ) {
+					$items[] = $this->md_inline( (string) preg_replace( '/^\s*[-*]\s+/', '', $line ) );
+				}
+				$out[] = array(
+					'type'  => 'list',
+					'items' => $items,
+				);
+				continue;
+			}
+
+			// Paragraph; soft-wrapped lines join with a break.
+			$out[] = array(
+				'type' => 'paragraph',
+				'html' => implode( '<br />', array_map( array( $this, 'md_inline' ), $lines ) ),
+			);
+		}//end foreach
+
+		return $out;
+	}
+
+	/**
+	 * A minimal Markdown → HTML pass (see {@see parse_markdown_blocks}). Kept for
+	 * plain-HTML callers; the blog seed uses {@see markdown_to_blocks}.
+	 *
+	 * @param string $md Markdown source.
+	 * @return string HTML.
+	 */
+	public function markdown_to_html( string $md ): string {
+		$html = array();
+		foreach ( $this->parse_markdown_blocks( $md ) as $block ) {
+			if ( 'heading' === $block['type'] ) {
+				$html[] = '<h' . $block['level'] . '>' . $block['html'] . '</h' . $block['level'] . '>';
+			} elseif ( 'list' === $block['type'] ) {
+				$items  = array_map( static fn( $i ) => '<li>' . $i . '</li>', $block['items'] );
+				$html[] = '<ul>' . implode( '', $items ) . '</ul>';
+			} elseif ( 'image' === $block['type'] ) {
+				$html[] = $this->image_html( $block['url'], $block['alt'] );
+			} elseif ( 'embed' === $block['type'] ) {
+				$safe   = esc_url( $block['url'] );
+				$html[] = '' !== $safe ? '<p><a href="' . $safe . '">' . esc_html( $block['url'] ) . '</a></p>' : '';
+			} else {
+				$html[] = '<p>' . $block['html'] . '</p>';
+			}
+		}
+
+		return implode( "\n\n", array_filter( $html, static fn( $h ) => '' !== $h ) );
+	}
+
+	/**
+	 * A minimal Markdown → **Gutenberg block markup** pass, so a seeded draft
+	 * opens as native paragraph/heading/list blocks rather than a single Classic
+	 * block. Block-delimiter comments are generated here; the escaped inner HTML
+	 * is passed through `wp_kses_post` (the delimiters are added around it, so
+	 * they survive).
+	 *
+	 * @param string $md Markdown source.
+	 * @return string Serialized block markup.
+	 */
+	public function markdown_to_blocks( string $md ): string {
+		$out = array();
+		foreach ( $this->parse_markdown_blocks( $md ) as $block ) {
+			if ( 'heading' === $block['type'] ) {
+				$level = (int) $block['level'];
+				$attrs = 2 === $level ? '' : ' ' . (string) wp_json_encode( array( 'level' => $level ) );
+				$inner = '<h' . $level . '>' . wp_kses_post( $block['html'] ) . '</h' . $level . '>';
+				$out[] = '<!-- wp:heading' . $attrs . " -->\n" . $inner . "\n<!-- /wp:heading -->";
+			} elseif ( 'list' === $block['type'] ) {
+				$items = '';
+				foreach ( $block['items'] as $item ) {
+					$items .= '<!-- wp:list-item --><li>' . wp_kses_post( $item ) . '</li><!-- /wp:list-item -->';
+				}
+				$out[] = "<!-- wp:list -->\n<ul>" . $items . "</ul>\n<!-- /wp:list -->";
+			} elseif ( 'image' === $block['type'] ) {
+				$img = $this->image_html( $block['url'], $block['alt'] );
+				if ( '' !== $img ) {
+					$out[] = "<!-- wp:image -->\n<figure class=\"wp-block-image\">" . $img . "</figure>\n<!-- /wp:image -->";
+				}
+			} elseif ( 'embed' === $block['type'] ) {
+				$embed = $this->embed_block( $block['url'] );
+				if ( '' !== $embed ) {
+					$out[] = $embed;
+				}
+			} else {
+				$out[] = "<!-- wp:paragraph -->\n<p>" . wp_kses_post( $block['html'] ) . "</p>\n<!-- /wp:paragraph -->";
+			}//end if
+		}//end foreach
+
+		return implode( "\n\n", $out );
+	}
+
+	/**
+	 * An `<img>` from a Markdown image, with the URL `esc_url`'d (unsafe schemes
+	 * dropped → no tag) and the alt escaped. Returns '' when the URL isn't safe.
+	 *
+	 * @param string $url Image URL.
+	 * @param string $alt Alt text.
+	 * @return string `<img …/>`, or ''.
+	 */
+	private function image_html( string $url, string $alt ): string {
+		$safe = esc_url( $url );
+		if ( '' === $safe ) {
+			return '';
+		}
+
+		return '<img src="' . $safe . '" alt="' . esc_attr( $alt ) . '"/>';
+	}
+
+	/**
+	 * Whether a string is a bare http(s) URL to a supported video host, so it can
+	 * become an embed block rather than a plain link.
+	 *
+	 * @param string $url Candidate URL.
+	 */
+	private function is_video_url( string $url ): bool {
+		if ( ! preg_match( '#^https?://#i', $url ) || preg_match( '/\s/', $url ) ) {
+			return false;
+		}
+		$host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
+
+		return (bool) preg_match( '/(^|\.)(youtube\.com|youtu\.be|vimeo\.com)$/', $host );
+	}
+
+	/**
+	 * A `core/embed` block for a supported video URL, or '' when the URL isn't a
+	 * safe http(s) URL. The editor hydrates the provider on open.
+	 *
+	 * @param string $url Video URL.
+	 * @return string Serialized embed block, or ''.
+	 */
+	private function embed_block( string $url ): string {
+		$safe = esc_url( $url );
+		if ( '' === $safe ) {
+			return '';
+		}
+		$attrs = (string) wp_json_encode( array( 'url' => $safe ) );
+
+		return '<!-- wp:embed ' . $attrs . " -->\n" .
+			'<figure class="wp-block-embed"><div class="wp-block-embed__wrapper">' . "\n" .
+			$safe . "\n" .
+			'</div></figure>' . "\n" .
+			'<!-- /wp:embed -->';
+	}
+
+	/**
+	 * Build Terraviz embed blocks for a post's grounding: a `terraviz/dataset`
+	 * block per linked dataset id and a `terraviz/tour` block for a linked tour,
+	 * under a lead-in heading. Empty when there's nothing to embed. Ids are
+	 * reduced to the canonical id charset before they reach the block attribute.
+	 *
+	 * @param array<int,mixed> $dataset_ids Linked dataset ids.
+	 * @param string           $tour_id     Linked tour id, or ''.
+	 * @return string Serialized block markup, or ''.
+	 */
+	private function embed_blocks( array $dataset_ids, string $tour_id ): string {
+		$blocks = array();
+
+		foreach ( $dataset_ids as $id ) {
+			$clean = $this->clean_block_id( (string) $id );
+			if ( '' !== $clean ) {
+				$blocks[] = '<!-- wp:terraviz/dataset ' . (string) wp_json_encode( array( 'id' => $clean ) ) . ' /-->';
+			}
+		}
+
+		$tour = $this->clean_block_id( $tour_id );
+		if ( '' !== $tour ) {
+			$blocks[] = '<!-- wp:terraviz/tour ' . (string) wp_json_encode( array( 'id' => $tour ) ) . ' /-->';
+		}
+
+		if ( empty( $blocks ) ) {
+			return '';
+		}
+
+		$heading = "<!-- wp:heading -->\n<h2>" . esc_html__( 'Explore the data', 'terraviz' ) . "</h2>\n<!-- /wp:heading -->";
+
+		return $heading . "\n\n" . implode( "\n\n", $blocks );
+	}
+
+	/**
+	 * Reduce an id to the canonical dataset/tour id charset (ULID or slug), so a
+	 * node-supplied value can't inject anything into a block attribute.
+	 *
+	 * @param string $id Raw id.
+	 * @return string Cleaned id.
+	 */
+	private function clean_block_id( string $id ): string {
+		return (string) preg_replace( '/[^A-Za-z0-9._:-]/', '', trim( $id ) );
+	}
+
+	/**
+	 * Inline Markdown for one text run: images, links, bold, italic, code — with
+	 * all user text HTML-escaped and every URL passed through `esc_url`. Images
+	 * are pulled out before links (an image contains link syntax) so both round-
+	 * trip cleanly through escaping.
+	 *
+	 * @param string $text Raw inline Markdown.
+	 * @return string HTML.
+	 */
+	private function md_inline( string $text ): string {
+		$tokens = array();
+
+		$text = (string) preg_replace_callback(
+			'/!\[([^\]]*)\]\(([^)\s]+)\)/',
+			static function ( $m ) use ( &$tokens ) {
+				$idx            = count( $tokens );
+				$tokens[ $idx ] = array(
+					'kind' => 'img',
+					'text' => $m[1],
+					'url'  => $m[2],
+				);
+				return '{{TVTOK' . $idx . '}}';
+			},
+			$text
+		);
+
+		$text = (string) preg_replace_callback(
+			'/\[([^\]]+)\]\(([^)\s]+)\)/',
+			static function ( $m ) use ( &$tokens ) {
+				$idx            = count( $tokens );
+				$tokens[ $idx ] = array(
+					'kind' => 'a',
+					'text' => $m[1],
+					'url'  => $m[2],
+				);
+				return '{{TVTOK' . $idx . '}}';
+			},
+			$text
+		);
+
+		$text = esc_html( $text );
+		$text = (string) preg_replace( '/\*\*([^*]+)\*\*/', '<strong>$1</strong>', $text );
+		$text = (string) preg_replace( '/(?<!\*)\*([^*\s][^*]*)\*(?!\*)/', '<em>$1</em>', $text );
+		$text = (string) preg_replace( '/`([^`]+)`/', '<code>$1</code>', $text );
+
+		return (string) preg_replace_callback(
+			'/\{\{TVTOK(\d+)\}\}/',
+			function ( $m ) use ( $tokens ) {
+				// Only a placeholder *we* minted maps to a token. A literal
+				// `{{TVTOKn}}` typed in the body has no token, so leave it as the
+				// author wrote it rather than fabricating an empty link/image.
+				if ( ! isset( $tokens[ (int) $m[1] ] ) ) {
+					return $m[0];
+				}
+				$tok = $tokens[ (int) $m[1] ];
+				if ( 'img' === $tok['kind'] ) {
+					return $this->image_html( $tok['url'], $tok['text'] );
+				}
+				return '<a href="' . esc_url( $tok['url'] ) . '">' . esc_html( $tok['text'] ) . '</a>';
+			},
+			$text
+		);
 	}
 
 	/**

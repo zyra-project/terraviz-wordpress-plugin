@@ -255,6 +255,21 @@ export function listBlog( status ) {
 	return apiFetch( { url } );
 }
 
+/**
+ * Seed a WordPress draft post from a node blog post, linking the two so the
+ * existing WP→node sync carries edits back. Idempotent — returns the existing
+ * WP post if the node post is already linked.
+ *
+ * @param {string} id Node blog-post id.
+ * @return {Promise<{wpId: number, editUrl: string, already_linked?: boolean}>} The WP post.
+ */
+export function importBlogToWp( id ) {
+	return apiFetch( {
+		url: `${ blogUrl() }/${ encodeURIComponent( id ) }/import-to-wp`,
+		method: 'POST',
+	} );
+}
+
 const heroUrl = () => `${ root }/featured-hero`;
 
 /**

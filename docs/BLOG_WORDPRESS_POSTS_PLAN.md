@@ -152,6 +152,23 @@ posts. When a post is **grounded in an event**, the node already carries that
 event's `image_url` into the blog stub's lead figure automatically (upstream
 generation), so a grounded post inherits its image with no extra step.
 
+**On seed (Slice 2), the node post's own media crosses into the WP post so the
+draft opens fully illustrated:**
+
+- **Cover image → WP featured image.** A node blog post carries a first-class
+  `coverImageUrl` / `coverImageAlt` (the "Cover image" shown in the Terraviz blog
+  editor). On import the plugin **sideloads** it into the media library and sets
+  it as the post's featured image. The fetch uses `wp_safe_remote_get` (rejects
+  private/reserved hosts — the URL may point at a third-party source such as NASA
+  Worldview or a news photo), accepts only raster web image types
+  (jpeg/png/gif/webp), and is size-capped. Best-effort: a failed or unsafe cover
+  just leaves the draft without a featured image; the post still seeds.
+- **Inline body media → blocks.** `markdown_to_blocks` now recognises a
+  standalone `![alt](url)` line as a `core/image` block, an inline `![alt](url)`
+  as an `<img>` within its paragraph, and a bare YouTube/Vimeo URL on its own line
+  as a `core/embed` block. Every media URL is `esc_url`'d, so unsafe schemes are
+  dropped (no tag emitted) exactly like body links.
+
 Node media **suggestions** (suggested videos / images) are a distinct
 capability that belongs on the **Event review** screen, not here — see §9.
 
@@ -178,9 +195,25 @@ capability that belongs on the **Event review** screen, not here — see §9.
 1. ✅ **Blog list (read) + reverse map** — `list_blog` client + `GET
    /publisher/blog` (decorated with `wp_edit_url`) + `Blog.js` (tiles, table,
    View, Edit-in-WordPress) + wire the sidebar tab to built. New-post → WP
-   editor. *No node writes; lowest risk.* Shipped in this PR.
-2. **Seed WP post from a node post** — `POST /publisher/blog/:id/import-to-wp`
-   + the "Create WordPress post" action + md→content conversion (v1).
+   editor. *No node writes; lowest risk.* (PR #33.)
+2. ✅ **Seed WP post from a node post** — `POST /publisher/blog/:id/import-to-wp`
+   creates a WP **draft** (authored by the acting user, gated on
+   `current_user_can('edit_posts')`) from the node post's title + body, writes the
+   `Sync` link meta (`ID`/`SLUG`/`OPTIN`) so the existing WP→node sync updates the
+   same stub on publish, and is idempotent (returns the existing WP post when
+   already linked). `Blog.js` adds a **Create WordPress post** action on unlinked
+   posts that hands the author into the WP editor. The body is seeded as **real
+   Gutenberg blocks** (`markdown_to_blocks`): paragraph / heading (clamped h2–h6)
+   / list blocks, all user text escaped (`md_inline`) and `wp_kses_post`'d inside
+   the block delimiters — not one Classic block. The post's grounding is then
+   appended as **Terraviz embed blocks** (`terraviz/dataset` per linked dataset,
+   `terraviz/tour` for a linked tour, under an "Explore the data" heading), so the
+   linked data is live in the editor from the start. **Media crosses over too**:
+   the node post's `coverImageUrl` is sideloaded (`wp_safe_remote_get`, raster
+   types only, size-capped) and set as the WP **featured image**, and body
+   `![alt](url)` images / bare video URLs become `core/image` / `core/embed`
+   blocks (all URLs `esc_url`'d). Tables/ordered-lists/fenced-code (and richer
+   md→block fidelity) are a later refinement.
 3. **Blog post template** (optional) — starter pattern/template.
 
 Each slice is its own PR. Slice 1 is the deck-faithful list and is independently
