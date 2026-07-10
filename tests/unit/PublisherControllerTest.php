@@ -1326,11 +1326,11 @@ class PublisherControllerTest extends WP_UnitTestCase {
 		// A bare video URL becomes an embed block.
 		$this->assertStringContainsString( '<!-- wp:embed', $out );
 		$this->assertStringContainsString( 'class="wp-block-embed"', $out );
-		// An inline image stays inside its paragraph.
-		$this->assertStringContainsString(
-			'<p>Text with an <img src="https://ex.com/a.jpg" alt="inline"/> image.</p>',
-			$out
-		);
+		// An inline image stays inside its paragraph (not promoted to its own
+		// block). `wp_kses_post` may re-space the self-closing tag, so assert on
+		// the parts, not an exact `/>`.
+		$this->assertStringContainsString( '<p>Text with an <img src="https://ex.com/a.jpg" alt="inline"', $out );
+		$this->assertStringContainsString( ' image.</p>', $out );
 	}
 
 	public function test_markdown_media_drops_unsafe_urls(): void {
