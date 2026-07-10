@@ -2066,9 +2066,10 @@ final class PublisherController {
 		}
 
 		// The bytes must really be a raster image of an accepted family, so a
-		// mislabelled non-image can't be forwarded.
-		$info      = getimagesizefromstring( $decoded );
-		$real_type = ( is_array( $info ) && ! empty( $info['mime'] ) ) ? strtolower( (string) $info['mime'] ) : '';
+		// mislabelled non-image can't be forwarded. Sniff the magic bytes rather
+		// than getimagesizefromstring(), which warns ("Read error!") on garbage
+		// input — a warning the WP test harness promotes to a failure.
+		$real_type = $this->sniff_image_mime( $decoded );
 		if ( ! in_array( $real_type, self::EVENT_IMAGE_TYPES, true ) ) {
 			return array( 'error' => __( 'The uploaded file is not a valid image.', 'terraviz' ) );
 		}
@@ -2086,5 +2087,35 @@ final class PublisherController {
 		}
 
 		return $out;
+	}
+
+	/**
+	 * Identify a raster image family from its leading magic bytes, or '' when the
+	 * bytes aren't one of the accepted types. A pure signature check — no
+	 * `getimagesizefromstring()` (which warns on unreadable input) and no GD
+	 * dependency.
+	 *
+	 * @param string $bytes Decoded file bytes.
+	 * @return string One of {@see self::EVENT_IMAGE_TYPES}, or ''.
+	 */
+	private function sniff_image_mime( string $bytes ): string {
+		if ( strlen( $bytes ) < 12 ) {
+			return '';
+		}
+		if ( "\xFF\xD8\xFF" === substr( $bytes, 0, 3 ) ) {
+			return 'image/jpeg';
+		}
+		if ( "\x89PNG\r\n\x1a\n" === substr( $bytes, 0, 8 ) ) {
+			return 'image/png';
+		}
+		$gif = substr( $bytes, 0, 6 );
+		if ( 'GIF87a' === $gif || 'GIF89a' === $gif ) {
+			return 'image/gif';
+		}
+		if ( 'RIFF' === substr( $bytes, 0, 4 ) && 'WEBP' === substr( $bytes, 8, 4 ) ) {
+			return 'image/webp';
+		}
+
+		return '';
 	}
 }
