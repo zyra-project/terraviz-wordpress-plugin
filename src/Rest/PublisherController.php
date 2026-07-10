@@ -1009,9 +1009,13 @@ final class PublisherController {
 		$response = wp_safe_remote_get(
 			$url,
 			array(
-				'timeout'            => 15,
-				'redirection'        => 2,
-				'reject_unsafe_urls' => true,
+				'timeout'             => 15,
+				'redirection'         => 2,
+				'reject_unsafe_urls'  => true,
+				// Hard-cap the download at the HTTP layer (+1 so an over-cap body
+				// trips the strlen check below) so a huge response can't exhaust
+				// memory before we ever measure it.
+				'limit_response_size' => self::MAX_COVER_BYTES + 1,
 			)
 		);
 		if ( is_wp_error( $response ) || 200 !== (int) wp_remote_retrieve_response_code( $response ) ) {
@@ -1029,8 +1033,10 @@ final class PublisherController {
 			'image/gif'  => 'gif',
 			'image/webp' => 'webp',
 		);
-		$type    = (string) wp_remote_retrieve_header( $response, 'content-type' );
-		$type    = strtolower( trim( explode( ';', $type )[0] ) );
+		// A cheap early-out on the advertised type before writing anything to disk;
+		// the authoritative check is against the stored bytes, below.
+		$type = (string) wp_remote_retrieve_header( $response, 'content-type' );
+		$type = strtolower( trim( explode( ';', $type )[0] ) );
 		if ( ! isset( $by_type[ $type ] ) ) {
 			return 0;
 		}
@@ -1047,6 +1053,17 @@ final class PublisherController {
 			return 0;
 		}
 
+		// Trust the *stored bytes*, not the response header: a lying `content-type`
+		// could smuggle a non-image onto disk. Verify the real type of the file
+		// and require it to be one of the accepted raster types.
+		$checked   = wp_check_filetype_and_ext( $upload['file'], $name );
+		$real_type = ( is_array( $checked ) && ! empty( $checked['type'] ) ) ? (string) $checked['type'] : '';
+		if ( ! isset( $by_type[ $real_type ] ) ) {
+			wp_delete_file( $upload['file'] );
+			return 0;
+		}
+		$type = $real_type;
+
 		$attachment_id = wp_insert_attachment(
 			array(
 				'post_mime_type' => $type,
@@ -1059,6 +1076,7 @@ final class PublisherController {
 			true
 		);
 		if ( is_wp_error( $attachment_id ) || (int) $attachment_id <= 0 ) {
+			wp_delete_file( $upload['file'] );
 			return 0;
 		}
 
@@ -1378,11 +1396,13 @@ final class PublisherController {
 		return (string) preg_replace_callback(
 			'/\{\{TVTOK(\d+)\}\}/',
 			function ( $m ) use ( $tokens ) {
-				$tok = $tokens[ (int) $m[1] ] ?? array(
-					'kind' => 'a',
-					'text' => '',
-					'url'  => '',
-				);
+				// Only a placeholder *we* minted maps to a token. A literal
+				// `{{TVTOKn}}` typed in the body has no token, so leave it as the
+				// author wrote it rather than fabricating an empty link/image.
+				if ( ! isset( $tokens[ (int) $m[1] ] ) ) {
+					return $m[0];
+				}
+				$tok = $tokens[ (int) $m[1] ];
 				if ( 'img' === $tok['kind'] ) {
 					return $this->image_html( $tok['url'], $tok['text'] );
 				}

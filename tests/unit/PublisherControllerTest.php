@@ -1396,6 +1396,55 @@ class PublisherControllerTest extends WP_UnitTestCase {
 		$this->assertSame( 'A wide cover', get_post_meta( $thumb_id, '_wp_attachment_image_alt', true ) );
 	}
 
+	public function test_markdown_preserves_literal_token_placeholder(): void {
+		// A literal `{{TVTOKn}}` typed in the body was never minted by md_inline,
+		// so it must survive verbatim, not become a fabricated empty link.
+		$html = $this->controller->markdown_to_html( 'Type {{TVTOK0}} literally.' );
+		$this->assertStringContainsString( '{{TVTOK0}}', $html );
+		$this->assertStringNotContainsString( '<a href="">', $html );
+	}
+
+	public function test_import_blog_rejects_cover_whose_bytes_are_not_an_image(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+
+		$cover_url = 'https://example.com/media/fake.png';
+		// The server lies: an image content-type over non-image bytes.
+		$liar = function ( $pre, $args, $url ) use ( $cover_url ) {
+			if ( (string) $url === $cover_url ) {
+				return array(
+					'response' => array( 'code' => 200 ),
+					'headers'  => array( 'content-type' => 'image/png' ),
+					'body'     => 'this is definitely not a PNG',
+				);
+			}
+			return array(
+				'response' => array( 'code' => 200 ),
+				'body'     => (string) wp_json_encode(
+					array(
+						'post' => array(
+							'id'            => 'B1',
+							'slug'          => 'a-story',
+							'title'         => 'A Story',
+							'bodyMd'        => 'Lead paragraph.',
+							'coverImageUrl' => $cover_url,
+						),
+					)
+				),
+			);
+		};
+
+		add_filter( 'pre_http_request', $liar, 10, 3 );
+		$response = $this->controller->import_blog_to_wp( $this->import_request( 'B1' ) );
+		remove_filter( 'pre_http_request', $liar, 10 );
+
+		// The post still seeds, but the lying cover is rejected on its real bytes,
+		// so no featured image is set.
+		$this->assertSame( 201, $response->get_status() );
+		$wp_id = (int) $response->get_data()['wpId'];
+		$this->assertSame( 0, (int) get_post_thumbnail_id( $wp_id ) );
+	}
+
 	public function test_import_blog_ignores_unsafe_cover_and_still_seeds_post(): void {
 		$this->configure_credential();
 		$editor = self::factory()->user->create( array( 'role' => 'editor' ) );
