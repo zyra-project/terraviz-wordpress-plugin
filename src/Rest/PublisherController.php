@@ -2057,6 +2057,12 @@ final class PublisherController {
 			return array( 'error' => __( 'The image data is empty.', 'terraviz' ) );
 		}
 
+		// Preflight on the *encoded* length so an oversized payload is rejected
+		// before base64_decode allocates it — base64 is ~4/3 of the decoded size.
+		if ( strlen( $data ) > (int) ceil( self::MAX_EVENT_IMAGE_BYTES / 3 ) * 4 + 4 ) {
+			return array( 'error' => __( 'The image is too large (max 4 MB).', 'terraviz' ) );
+		}
+
 		$decoded = base64_decode( $data, true ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- decoding an uploaded image to validate its real type/size before forwarding.
 		if ( false === $decoded || '' === $decoded ) {
 			return array( 'error' => __( 'The image data is not valid base64.', 'terraviz' ) );

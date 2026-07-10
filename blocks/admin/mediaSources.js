@@ -148,6 +148,244 @@ export function buildWorldviewSnapshot( event ) {
 }
 
 /**
+ * The event's representative location for a nearby search: the pin when there
+ * is one, else the bbox centre (antimeridian-aware — a `w > e` box wraps).
+ *
+ * @param {Object} geometry Event geometry (`point` or `boundingBox`).
+ * @return {?{lat: number, lon: number}} The location, or null.
+ */
+export function locationFor( geometry ) {
+	const geo = geometry || {};
+	if ( geo.point ) {
+		return {
+			lat: clampLat( geo.point.lat ),
+			lon: clampLon( geo.point.lon ),
+		};
+	}
+	const bbox = geo.boundingBox;
+	if ( ! bbox ) {
+		return null;
+	}
+	const lat = clampLat( ( bbox.n + bbox.s ) / 2 );
+	const w = clampLon( bbox.w );
+	const e = clampLon( bbox.e );
+	const span = w > e ? e + 360 - w : e - w;
+	let lon = w + span / 2;
+	if ( lon > 180 ) {
+		lon -= 360;
+	}
+	return { lat, lon };
+}
+
+// --- Wikimedia Commons nearby public-domain photos ---------------------------
+
+const COMMONS_API = 'https://commons.wikimedia.org/w/api.php';
+const COMMONS_RADIUS_M = 10000;
+const COMMONS_LIMIT = 3;
+const COMMONS_THUMB_WIDTH = 1024;
+/** No attribution obligation: the stored `image_url` can't carry one. */
+const FREE_LICENSE_RE = /public domain|cc0/i;
+
+/**
+ * The Commons geosearch query URL for a point (anonymous CORS via `origin=*`).
+ *
+ * @param {{lat: number, lon: number}} point Search centre.
+ * @return {string} The API URL.
+ */
+export function buildCommonsQueryUrl( point ) {
+	const params = new URLSearchParams( {
+		action: 'query',
+		format: 'json',
+		origin: '*',
+		generator: 'geosearch',
+		ggscoord: `${ point.lat }|${ point.lon }`,
+		ggsradius: String( COMMONS_RADIUS_M ),
+		ggslimit: '20',
+		ggsnamespace: '6',
+		prop: 'imageinfo',
+		iiprop: 'url|mime|extmetadata',
+		iiurlwidth: String( COMMONS_THUMB_WIDTH ),
+	} );
+	return `${ COMMONS_API }?${ params.toString() }`;
+}
+
+/**
+ * Map a Commons API response to `commons` suggestions: raster images under a
+ * public-domain / CC0 license only (the stored URL carries no attribution),
+ * nearest-first (by generator `index`, since `pages` is pageid-keyed), capped
+ * to the shortlist. The sized thumb is required — the full original can be huge.
+ *
+ * @param {Object} json Parsed Commons API response.
+ * @return {Array} Candidate descriptors.
+ */
+export function parseCommonsResponse( json ) {
+	const pages = json && json.query && json.query.pages;
+	if ( ! pages || typeof pages !== 'object' ) {
+		return [];
+	}
+	const ordered = Object.values( pages ).sort(
+		( a, b ) =>
+			( a && Number.isFinite( a.index )
+				? a.index
+				: Number.MAX_SAFE_INTEGER ) -
+			( b && Number.isFinite( b.index )
+				? b.index
+				: Number.MAX_SAFE_INTEGER )
+	);
+	const out = [];
+	for ( const page of ordered ) {
+		const info = page && page.imageinfo && page.imageinfo[ 0 ];
+		if ( ! info ) {
+			continue;
+		}
+		if (
+			typeof info.mime !== 'string' ||
+			! info.mime.startsWith( 'image/' )
+		) {
+			continue;
+		}
+		const license =
+			info.extmetadata &&
+			info.extmetadata.LicenseShortName &&
+			info.extmetadata.LicenseShortName.value;
+		if (
+			typeof license !== 'string' ||
+			! FREE_LICENSE_RE.test( license )
+		) {
+			continue;
+		}
+		const url = info.thumburl;
+		if (
+			typeof url !== 'string' ||
+			! /^https?:\/\//i.test( url ) ||
+			url.length > 2048
+		) {
+			continue;
+		}
+		out.push( {
+			kind: 'commons',
+			url,
+			attribution: 'Wikimedia Commons',
+		} );
+		if ( out.length >= COMMONS_LIMIT ) {
+			break;
+		}
+	}
+	return out;
+}
+
+// --- USGS ShakeMap intensity maps (earthquake events) ------------------------
+
+const USGS_QUERY_API = 'https://earthquake.usgs.gov/fdsnws/event/1/query';
+/** Only ever follow detail links back to the same host we queried. */
+const USGS_HOST = 'earthquake.usgs.gov';
+const USGS_WINDOW_DAYS = 2;
+const USGS_RADIUS_KM = 300;
+const USGS_MIN_MAGNITUDE = 4;
+
+/**
+ * Does this event read like an earthquake?
+ *
+ * @param {Object} event Review event (`title`/`summary`/`keywords`).
+ * @return {boolean} True when the text names a seismic event.
+ */
+export function looksLikeQuake( event ) {
+	const text = `${ event.title || '' } ${ event.summary || '' } ${ (
+		event.keywords || []
+	).join( ' ' ) }`;
+	return /\b(earthquake|quake|seismic|tremor|aftershock)\b/i.test( text );
+}
+
+/**
+ * The FDSN event query for "the largest shakemapped quake near this place
+ * around this date" (keyless, CORS-enabled).
+ *
+ * @param {{lat: number, lon: number}} point   Event location.
+ * @param {string}                     dateIso Event date (ISO).
+ * @return {string} The API URL.
+ */
+export function buildUsgsQueryUrl( point, dateIso ) {
+	const ms = Date.parse( dateIso );
+	const day = 24 * 60 * 60 * 1000;
+	const params = new URLSearchParams( {
+		format: 'geojson',
+		starttime: new Date( ms - USGS_WINDOW_DAYS * day )
+			.toISOString()
+			.slice( 0, 10 ),
+		endtime: new Date( ms + USGS_WINDOW_DAYS * day )
+			.toISOString()
+			.slice( 0, 10 ),
+		latitude: String( clampLat( point.lat ) ),
+		longitude: String( clampLon( point.lon ) ),
+		maxradiuskm: String( USGS_RADIUS_KM ),
+		minmagnitude: String( USGS_MIN_MAGNITUDE ),
+		producttype: 'shakemap',
+		orderby: 'magnitude',
+		limit: '1',
+	} );
+	return `${ USGS_QUERY_API }?${ params.toString() }`;
+}
+
+// Only same-host http(s) URLs may be followed / stored.
+function sameHostUsgsUrl( raw ) {
+	if ( typeof raw !== 'string' || raw.length > 2048 ) {
+		return null;
+	}
+	let u;
+	try {
+		u = new URL( raw );
+	} catch ( err ) {
+		return null;
+	}
+	return ( u.protocol === 'https:' || u.protocol === 'http:' ) &&
+		u.hostname === USGS_HOST
+		? raw
+		: null;
+}
+
+/**
+ * Pull the matched quake's detail-feed URL out of the FDSN query response. Only
+ * a same-host http(s) URL passes.
+ *
+ * @param {Object} json Parsed FDSN query response.
+ * @return {?string} The detail-feed URL, or null.
+ */
+export function parseUsgsQuery( json ) {
+	const features = json && json.features;
+	const detail =
+		Array.isArray( features ) &&
+		features[ 0 ] &&
+		features[ 0 ].properties &&
+		features[ 0 ].properties.detail;
+	return sameHostUsgsUrl( detail );
+}
+
+/**
+ * Pull the ShakeMap intensity image out of the detail feed. Same-host
+ * enforcement: this URL can become the stored event image, so a third-party URL
+ * in the upstream feed must never pass through.
+ *
+ * @param {Object} json Parsed detail-feed response.
+ * @return {?string} The intensity-image URL, or null.
+ */
+export function parseShakemapDetail( json ) {
+	const contents =
+		json &&
+		json.properties &&
+		json.properties.products &&
+		json.properties.products.shakemap &&
+		json.properties.products.shakemap[ 0 ] &&
+		json.properties.products.shakemap[ 0 ].contents;
+	if ( ! contents ) {
+		return null;
+	}
+	const jpg = contents[ 'download/intensity.jpg' ];
+	const png = contents[ 'download/intensity.png' ];
+	const url = ( jpg && jpg.url ) || ( png && png.url );
+	return sameHostUsgsUrl( url );
+}
+
+/**
  * Does this event read like a tropical cyclone?
  *
  * @param {Object} event Review event (`title`/`summary`/`keywords`).

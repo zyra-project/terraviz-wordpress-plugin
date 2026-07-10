@@ -31,17 +31,79 @@ import {
 	matchNhcConeSuggestion,
 	youtubeSuggestions,
 	looksLikeTropical,
+	looksLikeQuake,
+	locationFor,
 	isNocookieEmbedUrl,
+	buildCommonsQueryUrl,
+	parseCommonsResponse,
+	buildUsgsQueryUrl,
+	parseUsgsQuery,
+	parseShakemapDetail,
 } from './mediaSources';
 
 const KIND_LABEL = {
 	worldview: __( 'Satellite snapshot', 'terraviz' ),
+	shakemap: __( 'Shake intensity', 'terraviz' ),
 	nhc: __( 'Forecast cone', 'terraviz' ),
+	commons: __( 'Photo', 'terraviz' ),
 	youtube: __( 'Video', 'terraviz' ),
 };
 
 const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 const UPLOAD_TYPES = [ 'image/jpeg', 'image/png', 'image/gif', 'image/webp' ];
+const FETCH_TIMEOUT_MS = 6000;
+
+// A cross-origin GET to a keyless, CORS-enabled public API (Commons / USGS),
+// bounded by a timeout. These sources are fetched in the browser — the plugin's
+// PHP never calls a third party (only the node), so they can't be proxied.
+function fetchJsonWithTimeout( url ) {
+	const controller = new window.AbortController();
+	const timer = setTimeout( () => controller.abort(), FETCH_TIMEOUT_MS );
+	return window
+		.fetch( url, { signal: controller.signal } )
+		.then( ( res ) => ( res.ok ? res.json() : null ) )
+		.finally( () => clearTimeout( timer ) );
+}
+
+// Nearby public-domain/CC0 photos for a located event (Wikimedia Commons).
+function fetchCommonsSuggestions( event ) {
+	const point = locationFor( event.geometry );
+	if ( ! point ) {
+		return Promise.resolve( [] );
+	}
+	return fetchJsonWithTimeout( buildCommonsQueryUrl( point ) )
+		.then( ( json ) => ( json ? parseCommonsResponse( json ) : [] ) )
+		.catch( () => [] );
+}
+
+// The ShakeMap intensity map for an earthquake event: query the FDSN event API
+// for the largest shakemapped quake near the place/date, then read the
+// intensity image from its detail feed. Same-host guarded in the parsers.
+function fetchShakemapSuggestion( event ) {
+	if ( ! looksLikeQuake( event ) ) {
+		return Promise.resolve( null );
+	}
+	const point = locationFor( event.geometry );
+	const rawDate =
+		event.occurredStart || ( event.source && event.source.publishedAt );
+	if ( ! point || ! rawDate || ! Number.isFinite( Date.parse( rawDate ) ) ) {
+		return Promise.resolve( null );
+	}
+	return fetchJsonWithTimeout( buildUsgsQueryUrl( point, rawDate ) )
+		.then( ( json ) => {
+			const detailUrl = json && parseUsgsQuery( json );
+			if ( ! detailUrl ) {
+				return null;
+			}
+			return fetchJsonWithTimeout( detailUrl ).then( ( detail ) => {
+				const url = detail && parseShakemapDetail( detail );
+				return url
+					? { kind: 'shakemap', url, attribution: 'USGS ShakeMap' }
+					: null;
+			} );
+		} )
+		.catch( () => null );
+}
 
 // Read a File into bare base64 (no data-URI prefix), which the proxy forwards.
 function fileToBase64( file ) {
@@ -82,7 +144,11 @@ function MediaCard( { candidate, actionLabel, onUse, onFailed } ) {
 			>
 				<img
 					src={ preview }
-					alt=""
+					alt={
+						candidate.title ||
+						KIND_LABEL[ candidate.kind ] ||
+						candidate.kind
+					}
 					onError={ () => onFailed( candidate.url ) }
 					style={ {
 						width: '100%',
@@ -148,6 +214,8 @@ function MediaCard( { candidate, actionLabel, onUse, onFailed } ) {
 export default function MediaSuggest( { event, edits, onPick } ) {
 	const [ storms, setStorms ] = useState( null );
 	const [ videos, setVideos ] = useState( null );
+	const [ commons, setCommons ] = useState( [] );
+	const [ shakemap, setShakemap ] = useState( null );
 	const [ loading, setLoading ] = useState( false );
 	const [ failed, setFailed ] = useState( () => new Set() );
 	const [ uploadBusy, setUploadBusy ] = useState( false );
@@ -166,7 +234,9 @@ export default function MediaSuggest( { event, edits, onPick } ) {
 	const wantVideo = ! hasVideo && Boolean( title );
 
 	// Fetch the async sources once per event. The Worldview snapshot needs no
-	// fetch (it's a composed URL), so only YouTube + NHC hit the proxies.
+	// fetch (it's a composed URL); YouTube + NHC go through the node proxies,
+	// while Commons + USGS are keyless CORS APIs fetched straight from the
+	// browser (the plugin's PHP never calls a third party).
 	useEffect( () => {
 		let active = true;
 		const jobs = [];
@@ -202,10 +272,19 @@ export default function MediaSuggest( { event, edits, onPick } ) {
 		} else {
 			setStorms( [] );
 		}
-		if ( jobs.length ) {
-			setLoading( true );
-			Promise.all( jobs ).finally( () => active && setLoading( false ) );
-		}
+		jobs.push(
+			fetchCommonsSuggestions( event ).then(
+				( list ) =>
+					active && setCommons( Array.isArray( list ) ? list : [] )
+			)
+		);
+		jobs.push(
+			fetchShakemapSuggestion( event ).then(
+				( s ) => active && setShakemap( s || null )
+			)
+		);
+		setLoading( true );
+		Promise.all( jobs ).finally( () => active && setLoading( false ) );
 		return () => {
 			active = false;
 		};
@@ -229,20 +308,24 @@ export default function MediaSuggest( { event, edits, onPick } ) {
 		if ( usable( worldview ) ) {
 			imageCards.push( worldview );
 		}
+		if ( usable( shakemap ) ) {
+			imageCards.push( shakemap );
+		}
 		const cone = matchNhcConeSuggestion( event, storms || [] );
 		if ( usable( cone ) ) {
 			imageCards.push( cone );
 		}
+		( commons || [] )
+			.filter( usable )
+			.forEach( ( c ) => imageCards.push( c ) );
 	}
 	const videoCards = wantVideo
 		? youtubeSuggestions( videos || [] ).filter( usable )
 		: [];
 
-	const useImage = ( candidate ) =>
-		onPick( {
-			imageUrl: candidate.url,
-			imageAlt: candidate.attribution,
-		} );
+	// Fill only the image URL — leave imageAlt to the curator (attribution is
+	// not alt text, and a pick must not clobber alt they already typed).
+	const useImage = ( candidate ) => onPick( { imageUrl: candidate.url } );
 
 	const useVideo = ( candidate ) => {
 		// Only our own nocookie embed form may be stored — mirror the node guard.

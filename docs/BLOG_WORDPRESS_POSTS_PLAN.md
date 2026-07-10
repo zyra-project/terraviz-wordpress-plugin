@@ -291,22 +291,40 @@ configure-tier channel *allowlist*); and the Suggested-media pane
 (`blocks/admin/MediaSuggest.js`, pure builders in `mediaSources.js`) wired into
 `EventReview.js` below the edit fields.
 
-**Sources built:** a **NASA Worldview** satellite snapshot (composed
-client-side from the event's date + location — the URL *is* the image, no
-fetch), an **NHC forecast cone** for named tropical storms (matched by name via
-the `nhc-storms` proxy), and **agency-YouTube** video cards keyed by the event
-title (`youtube-search` proxy), plus **upload your own photo** (base64 →
-`events/:id/image`). A pick fills the review's `imageUrl` / `videoEmbedUrl`
-fields and is saved through the existing review submit; a card self-hides when
-its preview 404s.
+**Sources built — the app's full 5-source engine** (`mediaSources.js`):
+
+- **NASA Worldview** satellite snapshot — composed client-side from the event's
+  date + location (the URL *is* the image; no fetch to suggest).
+- **USGS ShakeMap** intensity map — for earthquake events: query the FDSN event
+  API for the largest shakemapped quake near the place/date, then read the
+  intensity image from its detail feed.
+- **NHC forecast cone** — for named tropical storms, matched by name via the
+  `nhc-storms` proxy.
+- **Wikimedia Commons** nearby photos — public-domain / CC0 only (the stored
+  `image_url` carries no attribution), nearest-first.
+- **Agency-YouTube** video cards — keyed by the event title via the
+  `youtube-search` proxy.
+
+Plus **upload your own photo** (base64 → `events/:id/image`). A pick fills the
+review's `imageUrl` / `videoEmbedUrl` fields (image picks leave `imageAlt` to
+the curator) and is saved through the existing review submit; a card self-hides
+when its preview 404s.
+
+**Where each source is fetched.** `youtube-search` and `nhc-storms` go through
+the **node proxy** (server-side key / no upstream CORS). **Commons and USGS are
+keyless, CORS-enabled public APIs fetched straight from the browser** — the
+plugin's PHP is forbidden from calling any third party (only the node), so they
+*can't* be proxied; the app fetches them client-side for the same reason.
 
 **Security posture:** the image-upload proxy validates the base64 payload
-before forwarding — decodes it, rejects anything over ~4 MB, and requires the
-real bytes to be a raster image (`getimagesizefromstring`), forwarding the
-*detected* MIME rather than the caller's claim. The video pick re-checks the
-node's nocookie-embed host guard client-side (`isNocookieEmbedUrl`).
+before forwarding — a length preflight rejects an oversized payload *before*
+`base64_decode` allocates it, then it caps the decoded bytes at ~4 MB and
+requires a raster-image magic-byte signature (`sniff_image_mime`, no
+`getimagesizefromstring`/GD), forwarding the *detected* MIME rather than the
+caller's claim. The ShakeMap parsers enforce **same-host** (`earthquake.usgs.gov`)
+on both the detail link and the stored image URL; Commons keeps only http(s)
+sized-thumb URLs. The video pick re-checks the node's nocookie-embed host guard
+client-side (`isNocookieEmbedUrl`).
 
-**Not built (still net-new upstream, unchanged):** Wikimedia Commons nearby
-photos (a fourth image source upstream) were left out to keep the pane to the
-plan's three contract-backed sources; and there's still **no hero
+**Not built (still net-new upstream, unchanged):** there's still **no hero
 image-suggestion endpoint**, so the hero wishlist item remains upstream work.
