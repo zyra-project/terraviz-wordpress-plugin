@@ -1476,4 +1476,174 @@ class PublisherControllerTest extends WP_UnitTestCase {
 		$this->assertSame( 0, (int) get_post_thumbnail_id( $wp_id ) );
 		$this->assertCount( 1, $this->sent_methods );
 	}
+
+	private function png_base64(): string {
+		// A real 1x1 PNG, base64-encoded (the wire shape the pane sends).
+		return 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+	}
+
+	public function test_media_suggestion_routes_require_publish_tier(): void {
+		$editor = self::factory()->user->create( array( 'role' => 'editor' ) );
+		$author = self::factory()->user->create( array( 'role' => 'author' ) );
+
+		// The suggestion reads/writes gate at the publish tier (consistent with
+		// event review), unlike the configure-tier channel allowlist.
+		wp_set_current_user( $editor );
+		$this->assertTrue( $this->controller->require_publish() );
+
+		wp_set_current_user( $author );
+		$this->assertFalse( $this->controller->require_publish() );
+	}
+
+	public function test_search_youtube_media_forwards_get_with_query(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['GET'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode( array( 'videos' => array() ) ),
+		);
+
+		$request = new WP_REST_Request( 'GET' );
+		$request->set_param( 'q', 'Hurricane Delta' );
+		$response = $this->controller->search_youtube_media( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		$url = end( $this->sent_urls );
+		$this->assertStringContainsString( '/api/v1/publish/media/youtube-search?q=', $url );
+		$this->assertStringContainsString( 'Hurricane', $url );
+	}
+
+	public function test_list_nhc_storms_forwards_get(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['GET'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode( array( 'activeStorms' => array() ) ),
+		);
+
+		$response = $this->controller->list_nhc_storms();
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertStringEndsWith( '/api/v1/publish/media/nhc-storms', end( $this->sent_urls ) );
+	}
+
+	public function test_set_event_image_forwards_normalized_body(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['POST'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode( array( 'imageUrl' => 'https://node/img/EV1.png' ) ),
+		);
+
+		$request = new WP_REST_Request( 'POST' );
+		$request->set_param( 'id', 'EV1' );
+		$request->set_header( 'Content-Type', 'application/json' );
+		$request->set_body(
+			(string) wp_json_encode(
+				array(
+					'contentType' => 'image/png',
+					'dataBase64'  => $this->png_base64(),
+					'altText'     => '  A storm  ',
+					'evil'        => 'DROP',
+				)
+			)
+		);
+		$response = $this->controller->set_event_image( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertStringEndsWith( '/api/v1/publish/events/EV1/image', end( $this->sent_urls ) );
+
+		$sent = json_decode( end( $this->sent_bodies ), true );
+		$this->assertSame( 'image/png', $sent['contentType'] );
+		$this->assertSame( $this->png_base64(), $sent['dataBase64'] );
+		$this->assertSame( 'A storm', $sent['altText'] );
+		$this->assertArrayNotHasKey( 'evil', $sent );
+	}
+
+	public function test_set_event_image_rejects_non_image_without_forwarding(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$request = new WP_REST_Request( 'POST' );
+		$request->set_param( 'id', 'EV1' );
+		$request->set_header( 'Content-Type', 'application/json' );
+		$request->set_body(
+			(string) wp_json_encode(
+				array(
+					'contentType' => 'image/png',
+					'dataBase64'  => base64_encode( 'this is not an image' ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+				)
+			)
+		);
+		$response = $this->controller->set_event_image( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		// Rejected locally with a 400; never forwarded to the node.
+		$this->assertSame( 400, $response->get_status() );
+		$this->assertSame( 'invalid_image', $response->get_data()['error'] );
+		$this->assertNotContains( 'POST', $this->sent_methods );
+	}
+
+	public function test_media_suggestion_routes_without_credential_return_409(): void {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+
+		$search = new WP_REST_Request( 'GET' );
+		$search->set_param( 'q', 'x' );
+		$this->assertSame( 409, $this->controller->search_youtube_media( $search )->get_status() );
+		$this->assertSame( 409, $this->controller->list_nhc_storms()->get_status() );
+
+		$image = new WP_REST_Request( 'POST' );
+		$image->set_param( 'id', 'EV1' );
+		$this->assertSame( 409, $this->controller->set_event_image( $image )->get_status() );
+	}
+
+	public function test_normalize_event_image_body_validates_and_allowlists(): void {
+		// A valid PNG: forwards the detected type, the bare base64, sanitized alt.
+		$ok = $this->controller->normalize_event_image_body(
+			array(
+				'contentType' => 'image/png',
+				'dataBase64'  => 'data:image/png;base64,' . $this->png_base64(),
+				'altText'     => "line\nbreak",
+			)
+		);
+		$this->assertSame( 'image/png', $ok['contentType'] );
+		$this->assertSame( $this->png_base64(), $ok['dataBase64'] );
+		$this->assertSame( 'line break', $ok['altText'] );
+
+		// An unsupported claimed type is rejected before decoding.
+		$this->assertArrayHasKey(
+			'error',
+			$this->controller->normalize_event_image_body(
+				array(
+					'contentType' => 'image/svg+xml',
+					'dataBase64'  => $this->png_base64(),
+				)
+			)
+		);
+
+		// Valid base64 that isn't actually an image is rejected.
+		$this->assertArrayHasKey(
+			'error',
+			$this->controller->normalize_event_image_body(
+				array(
+					'contentType' => 'image/png',
+					'dataBase64'  => base64_encode( 'nope' ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+				)
+			)
+		);
+	}
 }

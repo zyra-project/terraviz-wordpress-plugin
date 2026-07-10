@@ -434,6 +434,47 @@ final class PublishClient {
 	}
 
 	/**
+	 * `GET /api/v1/publish/media/youtube-search?q=` — agency-YouTube video
+	 * candidates for a query, pre-filtered to the allowlisted channels (the
+	 * payoff of the Media channels tab). KV-cached upstream; degrades to
+	 * `{ videos: [] }` when no `YOUTUBE_API_KEY` is configured on the node.
+	 * Returns `{ videos:[{ videoId, title, channelId, channelName }] }`.
+	 *
+	 * @param string $query Search query (typically the event title).
+	 * @return array<string,mixed>
+	 */
+	public function search_youtube_media( string $query ): array {
+		return $this->send( 'GET', '/api/v1/publish/media/youtube-search?' . http_build_query( array( 'q' => $query ) ) );
+	}
+
+	/**
+	 * `GET /api/v1/publish/media/nhc-storms` — the active tropical-cyclone list
+	 * from NHC's CurrentStorms feed, proxied same-origin (NHC serves no CORS
+	 * headers). Returns `{ activeStorms:[{ id, name }] }`; the pane matches a
+	 * storm by name to a tropical event and builds its forecast-cone graphic URL.
+	 *
+	 * @return array<string,mixed>
+	 */
+	public function list_nhc_storms(): array {
+		return $this->send( 'GET', '/api/v1/publish/media/nhc-storms' );
+	}
+
+	/**
+	 * `POST /api/v1/publish/events/:id/image` — upload the org's own photo as the
+	 * event's story image (the third path next to the feed `og:image` and the
+	 * suggested picks). The node validates (raster only, size-capped), stores it,
+	 * and returns `{ imageUrl }`, which the pane then writes back through the
+	 * event-review edit path.
+	 *
+	 * @param string              $id   Event id.
+	 * @param array<string,mixed> $body `{ contentType, dataBase64, altText? }`.
+	 * @return array<string,mixed>
+	 */
+	public function set_event_image( string $id, array $body ): array {
+		return $this->send( 'POST', '/api/v1/publish/events/' . rawurlencode( $id ) . '/image', $body );
+	}
+
+	/**
 	 * `GET /api/v1/featured-hero` — read the current "right now" hero override.
 	 *
 	 * This is the *public* read endpoint (the publish route exposes no

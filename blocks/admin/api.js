@@ -226,6 +226,46 @@ export function deleteMediaChannel( id ) {
 	} );
 }
 
+/**
+ * Search agency-YouTube video candidates for the suggested-media pane. The node
+ * holds the API key and pre-filters to the allowlisted channels; it degrades to
+ * an empty list when no key is configured.
+ *
+ * @param {string} q Query (typically the event title).
+ * @return {Promise<{videos: Array}>} `{ videos:[{videoId,title,channelId,channelName}] }`.
+ */
+export function searchYoutubeMedia( q ) {
+	return apiFetch( {
+		url: `${ root }/media/youtube-search?q=${ encodeURIComponent( q ) }`,
+	} );
+}
+
+/**
+ * List active tropical cyclones (proxied same-origin from NHC), so the pane can
+ * match a storm name to a tropical event and offer its forecast-cone graphic.
+ *
+ * @return {Promise<{activeStorms: Array}>} `{ activeStorms:[{id,name}] }`.
+ */
+export function listNhcStorms() {
+	return apiFetch( { url: `${ root }/media/nhc-storms` } );
+}
+
+/**
+ * Upload the org's own photo as an event's story image. The node validates and
+ * stores it, returning the resulting `imageUrl` to write through the review path.
+ *
+ * @param {string} id   Event id.
+ * @param {Object} data `{ contentType, dataBase64, altText? }`.
+ * @return {Promise<{imageUrl: string}>} The stored image URL.
+ */
+export function setEventImage( id, data ) {
+	return apiFetch( {
+		url: `${ eventUrl( id ) }/image`,
+		method: 'POST',
+		data,
+	} );
+}
+
 const eventTourUrl = ( id ) => `${ eventUrl( id ) }/tour`;
 
 /**

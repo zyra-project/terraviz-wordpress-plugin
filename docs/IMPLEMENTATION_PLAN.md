@@ -285,6 +285,20 @@ Cheap, high-value adds on **verified** contracts:
 > (`?tourEdit=<id>`); `PublishClient::generate_event_tour` +
 > `POST events/{id}/tour` route.
 >
+> **Suggested-media pane on Event review (shipped).** The event-review screen
+> gained a **Suggested media** pane (`blocks/admin/MediaSuggest.js`, pure URL
+> builders in `mediaSources.js`) offering story-image + video candidates for an
+> event: a **NASA Worldview** satellite snapshot (composed client-side from the
+> event date + location), an **NHC forecast cone** matched by storm name, and
+> **agency-YouTube** cards keyed by the title, plus **upload your own photo**. A
+> pick fills the review's `imageUrl` / `videoEmbedUrl` fields (saved through the
+> existing review submit); the event image then flows downstream to the derived
+> blog post and generated tours automatically. Publish-tier, consistent with
+> event review: `PublishClient::{search_youtube_media,list_nhc_storms,set_event_image}`,
+> `PublisherController` (`YT_SEARCH_BASE`/`NHC_BASE` + `events/{id}/image` routes,
+> `normalize_event_image_body` — validates the upload's real bytes before
+> forwarding). See the Blog plan §9.
+>
 > **Blog — reframed around WordPress posts (next).** Rather than a node-side
 > editor, blog authoring stays in WordPress: the dashboard Blog list surfaces the
 > node's posts with **View** (node `/blog/:slug`) and **Edit in WordPress**

@@ -281,10 +281,32 @@ picks · upload) that writes the chosen `imageUrl` / `videoEmbedUrl` through the
   **net-new upstream work** (a suggestion endpoint + plugin UI), tracked as a
   wishlist item, not buildable today.
 
-### Plugin work when scheduled (its own PR)
+### Plugin work — ✅ shipped
 
-Thin `PublishClient` reads (`search_youtube_media`, `list_nhc_storms`) + an
-`events/:id/image` upload proxy; capability-gated
-`terraviz/v1/publisher/media/*` routes (publish-tier, consistent with event
-review); and the Suggested-media pane in `blocks/admin/EventReview.js`.
-Contracts already located upstream.
+Thin `PublishClient` reads (`search_youtube_media`, `list_nhc_storms`) + a
+`set_event_image` (`events/:id/image`) upload proxy; capability-gated
+`terraviz/v1/publisher/media/{youtube-search,nhc-storms}` + `events/:id/image`
+routes (**publish-tier**, consistent with event review — distinct from the
+configure-tier channel *allowlist*); and the Suggested-media pane
+(`blocks/admin/MediaSuggest.js`, pure builders in `mediaSources.js`) wired into
+`EventReview.js` below the edit fields.
+
+**Sources built:** a **NASA Worldview** satellite snapshot (composed
+client-side from the event's date + location — the URL *is* the image, no
+fetch), an **NHC forecast cone** for named tropical storms (matched by name via
+the `nhc-storms` proxy), and **agency-YouTube** video cards keyed by the event
+title (`youtube-search` proxy), plus **upload your own photo** (base64 →
+`events/:id/image`). A pick fills the review's `imageUrl` / `videoEmbedUrl`
+fields and is saved through the existing review submit; a card self-hides when
+its preview 404s.
+
+**Security posture:** the image-upload proxy validates the base64 payload
+before forwarding — decodes it, rejects anything over ~4 MB, and requires the
+real bytes to be a raster image (`getimagesizefromstring`), forwarding the
+*detected* MIME rather than the caller's claim. The video pick re-checks the
+node's nocookie-embed host guard client-side (`isNocookieEmbedUrl`).
+
+**Not built (still net-new upstream, unchanged):** Wikimedia Commons nearby
+photos (a fourth image source upstream) were left out to keep the pane to the
+plan's three contract-backed sources; and there's still **no hero
+image-suggestion endpoint**, so the hero wishlist item remains upstream work.
