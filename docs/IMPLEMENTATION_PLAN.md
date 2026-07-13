@@ -312,7 +312,13 @@ Cheap, high-value adds on **verified** contracts:
 > **"Terraviz-grounded post" block pattern** (+ Terraviz pattern category) gives
 > authors starting a fresh post the same grounding scaffold — a lead paragraph,
 > an "Explore the data" heading, a live dataset embed, and a nudge to the opt-in
-> panel (slice 3, `src/Blog/Patterns.php`). See the Blog plan.
+> panel (slice 3, `src/Blog/Patterns.php`). Slice 4 adds **Draft with AI**
+> (`blocks/admin/DraftWithAI.js`): the node AI-drafts a post grounded in the
+> selected datasets (+ optional cited event, tone, length, companion tour) via
+> `POST /publish/blog/generate`, and the plugin seeds a WP draft from the result
+> with the slice-2 block converter (`PublishClient::generate_blog_draft`,
+> publish-tier route + `normalize_blog_generate_body`). AI runs on the node; no AI
+> binding surfaces the node's typed 503. See the Blog plan.
 
 ### Milestone C — new capability areas ⏳
 

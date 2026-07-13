@@ -1646,4 +1646,191 @@ class PublisherControllerTest extends WP_UnitTestCase {
 			)
 		);
 	}
+
+	private function generate_request( array $body ): WP_REST_Request {
+		$request = new WP_REST_Request( 'POST' );
+		$request->set_header( 'Content-Type', 'application/json' );
+		$request->set_body( (string) wp_json_encode( $body ) );
+		return $request;
+	}
+
+	public function test_draft_blog_with_ai_seeds_wp_draft_from_generated_content(): void {
+		$this->configure_credential();
+		$editor = self::factory()->user->create( array( 'role' => 'editor' ) );
+		wp_set_current_user( $editor );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		// The node returns an (unpersisted) AI draft plus a companion tour.
+		$this->http_by_method['POST'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode(
+				array(
+					'draft' => array(
+						'title'   => 'Warming Seas',
+						'summary' => 'A short summary.',
+						'bodyMd'  => "Lead paragraph.\n\n[More](https://example.com/x)",
+					),
+					'tour'  => array(
+						'id'    => 'tour-01',
+						'slug'  => 'warming-seas',
+						'title' => 'Warming Seas tour',
+					),
+				)
+			),
+		);
+
+		$response = $this->controller->draft_blog_with_ai(
+			$this->generate_request(
+				array(
+					'datasetIds' => array( 'sea-surface-temp', 'sea-surface-temp' ),
+					'length'     => 'medium',
+					'evil'       => 'DROP',
+				)
+			)
+		);
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 201, $response->get_status() );
+		$this->assertStringEndsWith( '/api/v1/publish/blog/generate', end( $this->sent_urls ) );
+
+		// The forwarded body is the normalized allowlist (deduped ids, no `evil`).
+		$sent = json_decode( end( $this->sent_bodies ), true );
+		$this->assertSame( array( 'sea-surface-temp' ), $sent['datasetIds'] );
+		$this->assertArrayNotHasKey( 'evil', $sent );
+
+		$wp_id = (int) $response->get_data()['wpId'];
+		$this->assertGreaterThan( 0, $wp_id );
+
+		$post = get_post( $wp_id );
+		$this->assertSame( 'draft', $post->post_status );
+		$this->assertSame( 'Warming Seas', $post->post_title );
+		$this->assertSame( (int) $editor, (int) $post->post_author );
+		$this->assertSame( 'A short summary.', $post->post_excerpt );
+		// Seeded as real Gutenberg blocks with the escaped link…
+		$this->assertStringContainsString( '<!-- wp:paragraph -->', $post->post_content );
+		$this->assertStringContainsString( '<a href="https://example.com/x">More</a>', $post->post_content );
+		// …a dataset embed for the grounding, and the companion tour embed.
+		$this->assertStringContainsString( '<!-- wp:terraviz/dataset {"id":"sea-surface-temp"} /-->', $post->post_content );
+		$this->assertStringContainsString( '<!-- wp:terraviz/tour {"id":"tour-01"} /-->', $post->post_content );
+		// Opted into Terraviz so a WP publish creates the node stub via the sync.
+		$this->assertTrue( (bool) get_post_meta( $wp_id, \Terraviz\Blog\Sync::OPTIN_META, true ) );
+		// No node blog id is linked (the draft was never persisted upstream).
+		$this->assertSame( '', (string) get_post_meta( $wp_id, \Terraviz\Blog\Sync::ID_META, true ) );
+
+		$this->assertSame(
+			array(
+				'id'    => 'tour-01',
+				'slug'  => 'warming-seas',
+				'title' => 'Warming Seas tour',
+			),
+			$response->get_data()['tour']
+		);
+	}
+
+	public function test_draft_blog_with_ai_rejects_empty_datasets_without_forwarding(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$response = $this->controller->draft_blog_with_ai( $this->generate_request( array( 'datasetIds' => array() ) ) );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 400, $response->get_status() );
+		$this->assertSame( 'no_datasets', $response->get_data()['error'] );
+		// Never reaches the node.
+		$this->assertNotContains( 'POST', $this->sent_methods );
+	}
+
+	public function test_draft_blog_with_ai_surfaces_node_ai_unavailable(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['POST'] = array(
+			'response' => array( 'code' => 503 ),
+			'body'     => (string) wp_json_encode(
+				array(
+					'error'   => 'ai_unavailable',
+					'message' => 'No AI binding on this node.',
+				)
+			),
+		);
+
+		$before   = (int) wp_count_posts()->draft;
+		$response = $this->controller->draft_blog_with_ai(
+			$this->generate_request( array( 'datasetIds' => array( 'sea-surface-temp' ) ) )
+		);
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		// The node's status + reason pass through, and no WP post is created.
+		$this->assertSame( 503, $response->get_status() );
+		$this->assertSame( 'ai_unavailable', $response->get_data()['error'] );
+		$this->assertSame( $before, (int) wp_count_posts()->draft );
+	}
+
+	public function test_draft_blog_with_ai_requires_wp_post_capability(): void {
+		$this->configure_credential();
+
+		// Configure-tier (manage_terraviz) but no WordPress post-editing rights.
+		$user = self::factory()->user->create( array( 'role' => 'subscriber' ) );
+		get_user_by( 'id', $user )->add_cap( Capabilities::MANAGE );
+		wp_set_current_user( $user );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$response = $this->controller->draft_blog_with_ai(
+			$this->generate_request( array( 'datasetIds' => array( 'sea-surface-temp' ) ) )
+		);
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 403, $response->get_status() );
+		$this->assertSame( 'forbidden', $response->get_data()['error'] );
+		$this->assertNotContains( 'POST', $this->sent_methods );
+	}
+
+	public function test_draft_blog_with_ai_without_credential_returns_409(): void {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+
+		$response = $this->controller->draft_blog_with_ai(
+			$this->generate_request( array( 'datasetIds' => array( 'sea-surface-temp' ) ) )
+		);
+
+		$this->assertSame( 409, $response->get_status() );
+		$this->assertSame( 'credential_missing', $response->get_data()['error'] );
+	}
+
+	public function test_normalize_blog_generate_body_allowlists_and_coerces(): void {
+		$out = $this->controller->normalize_blog_generate_body(
+			array(
+				'datasetIds'  => array( 'a', 'a', 'b!!', 5 ),
+				'eventId'     => 'EV_1',
+				'tone'        => '  warm  and   clear ',
+				'length'      => 'long',
+				'includeTour' => true,
+				'stray'       => 1,
+			)
+		);
+		$this->assertSame( array( 'a', 'b', '5' ), $out['datasetIds'] );
+		$this->assertSame( 'EV_1', $out['eventId'] );
+		$this->assertSame( 'warm and clear', $out['tone'] );
+		$this->assertSame( 'long', $out['length'] );
+		$this->assertTrue( $out['includeTour'] );
+		$this->assertArrayNotHasKey( 'stray', $out );
+
+		// A bad length is dropped (node defaults it); a non-true includeTour is
+		// omitted; the id list is capped at the node's 20-dataset limit.
+		$capped = $this->controller->normalize_blog_generate_body(
+			array(
+				'datasetIds'  => array_map( static fn( $i ) => 'd' . $i, range( 1, 30 ) ),
+				'length'      => 'epic',
+				'includeTour' => 'false',
+			)
+		);
+		$this->assertCount( 20, $capped['datasetIds'] );
+		$this->assertArrayNotHasKey( 'length', $capped );
+		$this->assertArrayNotHasKey( 'includeTour', $capped );
+	}
 }

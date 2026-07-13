@@ -310,6 +310,22 @@ export function importBlogToWp( id ) {
 	} );
 }
 
+/**
+ * AI-draft a blog post on the node from the selected datasets (and an optional
+ * cited event), then seed a WordPress draft from the result. Returns the seeded
+ * post; rejects with the node's error on 503 (no AI configured) / 502 / 400.
+ *
+ * @param {Object} data `{ datasetIds, eventId?, tone?, length?, includeTour? }`.
+ * @return {Promise<{wpId: number, editUrl: string, tour: ?Object, tourError: ?string}>} The seeded post.
+ */
+export function generateBlogDraft( data ) {
+	return apiFetch( {
+		url: `${ blogUrl() }/generate`,
+		method: 'POST',
+		data,
+	} );
+}
+
 const heroUrl = () => `${ root }/featured-hero`;
 
 /**

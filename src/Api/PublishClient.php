@@ -274,6 +274,21 @@ final class PublishClient {
 	}
 
 	/**
+	 * `POST /api/v1/publish/blog/generate` — AI-draft a blog post grounded in the
+	 * caller's selected datasets (and an optional cited event), using the node's
+	 * Workers AI. The draft is **returned, not persisted** — the plugin seeds a
+	 * WordPress draft from it. Returns `200 { draft:{ title, summary, bodyMd },
+	 * tour, tourError }`; `503 ai_unavailable` when the node has no AI binding,
+	 * `502` on an unusable model reply, `400 no_datasets` when nothing grounds it.
+	 *
+	 * @param array<string,mixed> $body `{ datasetIds:string[], eventId?, tone?, length?, includeTour? }`.
+	 * @return array<string,mixed>
+	 */
+	public function generate_blog_draft( array $body ): array {
+		return $this->send( 'POST', '/api/v1/publish/blog/generate', $body );
+	}
+
+	/**
 	 * `POST /api/v1/publish/events` — propose a news event. The event is born
 	 * `proposed` and awaits a curator's approval on the node; there is no
 	 * `PUT`/`GET :id`/delete and no publish/unpublish toggle for the caller, so

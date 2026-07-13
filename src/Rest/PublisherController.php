@@ -453,6 +453,20 @@ final class PublisherController {
 			)
 		);
 
+		// AI-draft a blog post from selected datasets (+ an optional cited event)
+		// and seed a WordPress draft from the result. The literal `generate` route
+		// is registered before the `{id}` blog routes so the id matcher can't
+		// swallow it. A write, so publish-tier.
+		register_rest_route(
+			self::NAMESPACE,
+			self::BLOG_BASE . '/generate',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'draft_blog_with_ai' ),
+				'permission_callback' => array( $this, 'require_publish' ),
+			)
+		);
+
 		// Seed a WordPress post from a node blog post ("Terraviz drives the
 		// initial content"): creates a WP draft prefilled from the node post and
 		// links the two so the existing WP→node sync carries edits back. A write,
@@ -1098,6 +1112,115 @@ final class PublisherController {
 			array(
 				'wpId'    => (int) $wp_id,
 				'editUrl' => (string) get_edit_post_link( (int) $wp_id, 'raw' ),
+			),
+			201
+		);
+	}
+
+	/**
+	 * AI-draft a blog post from the caller's selected datasets (and an optional
+	 * cited event) on the node, then seed a WordPress **draft** from the returned
+	 * content — the from-scratch, AI-assisted counterpart to `import_blog_to_wp`.
+	 *
+	 * The node draft is *returned, not persisted* upstream, so there is no node
+	 * blog id to link; the seeded WP post is opted into Terraviz so a subsequent
+	 * WP publish creates the node blog stub via the existing WP→node sync. The
+	 * body is seeded as real Gutenberg blocks plus the grounding embed blocks
+	 * (the same converter as the import path). A companion tour, when the node
+	 * generated one, is embedded too.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function draft_blog_with_ai( WP_REST_Request $request ): WP_REST_Response {
+		// Creating a WP post needs WordPress's own posting capability, not just
+		// the plugin's publish tier (which can be held without `edit_posts`).
+		if ( ! current_user_can( 'edit_posts' ) ) {
+			return new WP_REST_Response(
+				array(
+					'error'   => 'forbidden',
+					'message' => __( 'You need permission to create WordPress posts.', 'terraviz' ),
+					'errors'  => array(),
+				),
+				403
+			);
+		}
+
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		$body = $this->normalize_blog_generate_body( (array) $request->get_json_params() );
+		if ( empty( $body['datasetIds'] ) ) {
+			return new WP_REST_Response(
+				array(
+					'error'   => 'no_datasets',
+					'message' => __( 'Select at least one dataset to ground the draft in.', 'terraviz' ),
+					'errors'  => array(),
+				),
+				400
+			);
+		}
+
+		$result = $client->generate_blog_draft( $body );
+		if ( ! $result['ok'] ) {
+			// Surface the node's status + reason as-is (503 no-AI, 502 unusable,
+			// 400 no visible datasets, …) for the dashboard to message.
+			return $this->respond( $result );
+		}
+
+		$draft   = ( isset( $result['data']['draft'] ) && is_array( $result['data']['draft'] ) ) ? $result['data']['draft'] : array();
+		$title   = isset( $draft['title'] ) ? (string) $draft['title'] : '';
+		$body_md = isset( $draft['bodyMd'] ) ? (string) $draft['bodyMd'] : '';
+		$summary = isset( $draft['summary'] ) ? (string) $draft['summary'] : '';
+
+		$tour       = ( isset( $result['data']['tour'] ) && is_array( $result['data']['tour'] ) ) ? $result['data']['tour'] : array();
+		$tour_id    = isset( $tour['id'] ) ? (string) $tour['id'] : '';
+		$tour_error = isset( $result['data']['tourError'] ) ? (string) $result['data']['tourError'] : '';
+
+		// Seed real Gutenberg blocks (converted body) + Terraviz embed blocks for
+		// the datasets the draft is grounded in and the companion tour, if any.
+		$content = $this->markdown_to_blocks( $body_md );
+		$embeds  = $this->embed_blocks( $body['datasetIds'], $tour_id );
+		if ( '' !== $embeds ) {
+			$content = '' !== $content ? $content . "\n\n" . $embeds : $embeds;
+		}
+
+		$wp_id = wp_insert_post(
+			array(
+				'post_type'    => 'post',
+				'post_status'  => 'draft',
+				'post_title'   => '' !== $title ? $title : __( 'Untitled Terraviz post', 'terraviz' ),
+				'post_content' => $content,
+				'post_excerpt' => sanitize_textarea_field( $summary ),
+				'post_author'  => get_current_user_id(),
+			),
+			true
+		);
+
+		if ( is_wp_error( $wp_id ) ) {
+			return new WP_REST_Response(
+				array(
+					'error'   => 'wp_insert_failed',
+					'message' => $wp_id->get_error_message(),
+					'errors'  => array(),
+				),
+				500
+			);
+		}
+
+		// Opt the seeded draft into Terraviz (no node id to link yet — a WP
+		// publish creates the stub through the existing sync), matching the
+		// import path's posture.
+		update_post_meta( $wp_id, Sync::OPTIN_META, true );
+
+		return new WP_REST_Response(
+			array(
+				'wpId'      => (int) $wp_id,
+				'editUrl'   => (string) get_edit_post_link( (int) $wp_id, 'raw' ),
+				'tour'      => ! empty( $tour ) ? $tour : null,
+				'tourError' => '' !== $tour_error ? $tour_error : null,
 			),
 			201
 		);
@@ -2090,6 +2213,62 @@ final class PublisherController {
 			if ( '' !== $alt ) {
 				$out['altText'] = $alt;
 			}
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Reduce a caller-supplied AI-draft request to the fields the node's
+	 * `blog/generate` accepts: a bounded, deduped, canonical-id dataset list, an
+	 * optional cited event id, an optional tone string, a `length` enum, and an
+	 * `includeTour` flag. The node performs the authoritative validation; this is
+	 * defence in depth so the proxy never forwards arbitrary JSON.
+	 *
+	 * @param array<string,mixed> $raw Decoded JSON body.
+	 * @return array<string,mixed>
+	 */
+	public function normalize_blog_generate_body( array $raw ): array {
+		$out = array();
+
+		$ids     = ( isset( $raw['datasetIds'] ) && is_array( $raw['datasetIds'] ) ) ? $raw['datasetIds'] : array();
+		$cleaned = array();
+		foreach ( $ids as $id ) {
+			if ( is_string( $id ) || is_numeric( $id ) ) {
+				$clean = $this->clean_block_id( (string) $id );
+				if ( '' !== $clean ) {
+					$cleaned[] = $clean;
+				}
+			}
+		}
+		// Dedup and cap at the node's POST_MAX_DATASETS (20).
+		$out['datasetIds'] = array_slice( array_values( array_unique( $cleaned ) ), 0, 20 );
+
+		if ( isset( $raw['eventId'] ) && ( is_string( $raw['eventId'] ) || is_numeric( $raw['eventId'] ) ) ) {
+			$event_id = $this->clean_block_id( (string) $raw['eventId'] );
+			if ( '' !== $event_id ) {
+				$out['eventId'] = $event_id;
+			}
+		}
+
+		if ( isset( $raw['tone'] ) && ( is_string( $raw['tone'] ) || is_numeric( $raw['tone'] ) ) ) {
+			$tone = sanitize_text_field( (string) $raw['tone'] );
+			if ( '' !== $tone ) {
+				// Bound the tone hint so a pathological value can't bloat the prompt.
+				$out['tone'] = function_exists( 'mb_substr' ) ? mb_substr( $tone, 0, 200 ) : substr( $tone, 0, 200 );
+			}
+		}
+
+		$length = isset( $raw['length'] ) ? (string) $raw['length'] : '';
+		if ( in_array( $length, array( 'short', 'medium', 'long' ), true ) ) {
+			$out['length'] = $length;
+		}
+
+		// The node treats only a strict boolean true as "include the tour".
+		if ( isset( $raw['includeTour'] )
+			&& ( true === $raw['includeTour'] || 1 === $raw['includeTour'] || '1' === $raw['includeTour'] || 'true' === strtolower( (string) $raw['includeTour'] ) )
+		) {
+			$out['includeTour'] = true;
 		}
 
 		return $out;
