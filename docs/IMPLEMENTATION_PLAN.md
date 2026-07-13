@@ -301,13 +301,18 @@ Cheap, high-value adds on **verified** contracts:
 > `normalize_event_image_body` — length preflight + magic-byte image check before
 > forwarding). See the Blog plan §9.
 >
-> **Blog — reframed around WordPress posts (next).** Rather than a node-side
+> **Blog — reframed around WordPress posts (shipped).** Rather than a node-side
 > editor, blog authoring stays in WordPress: the dashboard Blog list surfaces the
 > node's posts with **View** (node `/blog/:slug`) and **Edit in WordPress**
-> (reverse-mapped via the existing `Sync::ID_META` post meta), plus a way to seed
-> a WP draft from a node-authored post so Terraviz can "drive the initial
-> content" and the existing WP→node sync carries the markdown back with a link
-> home. Its own slice.
+> (reverse-mapped via the existing `Sync::ID_META` post meta) (slice 1, PR #33);
+> a **Create WordPress post** action seeds a WP draft from a node-authored post as
+> real Gutenberg + Terraviz embed blocks, carrying the node post's cover/media
+> across, so Terraviz can "drive the initial content" and the existing WP→node
+> sync carries the markdown back with a link home (slice 2, PR #34); and a
+> **"Terraviz-grounded post" block pattern** (+ Terraviz pattern category) gives
+> authors starting a fresh post the same grounding scaffold — a lead paragraph,
+> an "Explore the data" heading, a live dataset embed, and a nudge to the opt-in
+> panel (slice 3, `src/Blog/Patterns.php`). See the Blog plan.
 
 ### Milestone C — new capability areas ⏳
 
