@@ -473,10 +473,12 @@ export default function MediaSuggest( { event, edits, onPick } ) {
 
 			{ nothingYet && (
 				<p style={ { color: '#646970' } }>
-					{ __(
-						'No suggestions for this event. Upload your own image below.',
-						'terraviz'
-					) }
+					{ wantImage
+						? __(
+								'No suggestions for this event. Upload your own image below.',
+								'terraviz'
+						  )
+						: __( 'No suggestions for this event.', 'terraviz' ) }
 				</p>
 			) }
 
