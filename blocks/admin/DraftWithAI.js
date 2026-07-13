@@ -72,18 +72,20 @@ export default function DraftWithAI( { onCancel } ) {
 	}, [] );
 
 	// FormTokenField works in display labels; keep a label→id map to resolve the
-	// picks back to dataset ids (a token with no match is treated as a raw id).
+	// picks back to dataset ids (a token with no match is treated as a raw id). A
+	// Map, not a plain object, so a token like `constructor`/`__proto__` can't
+	// resolve to an inherited property.
 	const labelFor = ( d ) => `${ d.title || d.id } (${ d.id })`;
-	const labelToId = {};
+	const labelToId = new Map();
 	datasets.forEach( ( d ) => {
-		labelToId[ labelFor( d ) ] = d.id;
+		labelToId.set( labelFor( d ), d.id );
 	} );
 	const suggestions = datasets.map( labelFor );
 
 	const resolveIds = () =>
 		tokens
 			.map( ( t ) =>
-				labelToId[ t ] ? labelToId[ t ] : String( t ).trim()
+				labelToId.has( t ) ? labelToId.get( t ) : String( t ).trim()
 			)
 			.filter( Boolean );
 

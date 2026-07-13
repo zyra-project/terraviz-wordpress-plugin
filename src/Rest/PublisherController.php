@@ -2264,10 +2264,10 @@ final class PublisherController {
 			$out['length'] = $length;
 		}
 
-		// The node treats only a strict boolean true as "include the tour".
-		if ( isset( $raw['includeTour'] )
-			&& ( true === $raw['includeTour'] || 1 === $raw['includeTour'] || '1' === $raw['includeTour'] || 'true' === strtolower( (string) $raw['includeTour'] ) )
-		) {
+		// The node treats only a strict boolean true as "include the tour", and
+		// the dashboard sends a real JSON boolean — so forward it only for `true`,
+		// with no surprising coercion of 1/'1'/'true'.
+		if ( isset( $raw['includeTour'] ) && true === $raw['includeTour'] ) {
 			$out['includeTour'] = true;
 		}
 
