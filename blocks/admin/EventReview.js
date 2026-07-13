@@ -17,6 +17,7 @@ import {
 } from '@wordpress/components';
 import { reviewEvent, generateEventTour, normalizeError } from './api';
 import { safeHttpUrl } from './safeUrl';
+import MediaSuggest from './MediaSuggest';
 
 function initialEdits( ev ) {
 	const geo = ev.geometry || {};
@@ -274,6 +275,14 @@ export default function EventReview( { event, boot, onReviewed, onCancel } ) {
 				onChange={ set( 'videoEmbedUrl' ) }
 				help={ fieldError( 'videoEmbedUrl' ) }
 				__nextHasNoMarginBottom
+			/>
+
+			<MediaSuggest
+				event={ event }
+				edits={ edits }
+				onPick={ ( partial ) =>
+					setEdits( ( prev ) => ( { ...prev, ...partial } ) )
+				}
 			/>
 
 			{ suggested.length > 0 && (

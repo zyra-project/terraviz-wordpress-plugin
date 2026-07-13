@@ -285,6 +285,22 @@ Cheap, high-value adds on **verified** contracts:
 > (`?tourEdit=<id>`); `PublishClient::generate_event_tour` +
 > `POST events/{id}/tour` route.
 >
+> **Suggested-media pane on Event review (shipped).** The event-review screen
+> gained a **Suggested media** pane (`blocks/admin/MediaSuggest.js`, pure builders
+> in `mediaSources.js`) offering the app's full 5-source engine of story-image +
+> video candidates for an event: **NASA Worldview** snapshot, **USGS ShakeMap**
+> (earthquakes), **NHC forecast cone** (named storms), **Wikimedia Commons**
+> nearby PD/CC0 photos, and **agency-YouTube** cards, plus **upload your own
+> photo**. A pick fills the review's `imageUrl` / `videoEmbedUrl` fields (saved
+> through the existing review submit); the event image then flows downstream to
+> the derived blog post and generated tours automatically. `youtube-search` +
+> `nhc-storms` go through the node proxy; Commons + USGS are keyless CORS APIs
+> fetched client-side (the plugin's PHP never calls a third party). Publish-tier:
+> `PublishClient::{search_youtube_media,list_nhc_storms,set_event_image}`,
+> `PublisherController` (`YT_SEARCH_BASE`/`NHC_BASE` + `events/{id}/image` routes,
+> `normalize_event_image_body` — length preflight + magic-byte image check before
+> forwarding). See the Blog plan §9.
+>
 > **Blog — reframed around WordPress posts (next).** Rather than a node-side
 > editor, blog authoring stays in WordPress: the dashboard Blog list surfaces the
 > node's posts with **View** (node `/blog/:slug`) and **Edit in WordPress**

@@ -47,13 +47,15 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class PublisherController {
 
-	private const NAMESPACE   = 'terraviz/v1';
-	private const BASE        = '/publisher/datasets';
-	private const EVENTS_BASE = '/publisher/events';
-	private const FEEDS_BASE  = '/publisher/feeds';
-	private const HERO_BASE   = '/publisher/featured-hero';
-	private const MEDIA_BASE  = '/publisher/media/youtube-channels';
-	private const BLOG_BASE   = '/publisher/blog';
+	private const NAMESPACE      = 'terraviz/v1';
+	private const BASE           = '/publisher/datasets';
+	private const EVENTS_BASE    = '/publisher/events';
+	private const FEEDS_BASE     = '/publisher/feeds';
+	private const HERO_BASE      = '/publisher/featured-hero';
+	private const MEDIA_BASE     = '/publisher/media/youtube-channels';
+	private const YT_SEARCH_BASE = '/publisher/media/youtube-search';
+	private const NHC_BASE       = '/publisher/media/nhc-storms';
+	private const BLOG_BASE      = '/publisher/blog';
 
 	/**
 	 * URL-segment pattern for a dataset id (ULID or slug).
@@ -65,6 +67,19 @@ final class PublisherController {
 	 * body into memory, so bound it well above any realistic web image.
 	 */
 	private const MAX_COVER_BYTES = 12582912;
+
+	/**
+	 * Cap on an event-image upload (decoded bytes). Mirrors the node's own raster
+	 * limit (~4 MB) so an oversized upload is rejected before the base64 payload
+	 * is forwarded, rather than after a round-trip.
+	 */
+	private const MAX_EVENT_IMAGE_BYTES = 4194304;
+
+	/**
+	 * Raster image MIME types accepted for an event-image upload — the same set
+	 * the node stores. Kept in sync with {@see self::sideload_image()}.
+	 */
+	private const EVENT_IMAGE_TYPES = array( 'image/jpeg', 'image/png', 'image/gif', 'image/webp' );
 
 	/**
 	 * Free-text / reference string fields accepted on a dataset body.
@@ -374,6 +389,48 @@ final class PublisherController {
 				'methods'             => 'DELETE',
 				'callback'            => array( $this, 'delete_media_channel' ),
 				'permission_callback' => array( $this, 'require_configure' ),
+			)
+		);
+
+		// Media *suggestions* for the event-review pane. Unlike the channel
+		// allowlist (configure-tier admin config), these are read/write actions a
+		// curator takes while reviewing an event, so they gate at the publish tier
+		// — consistent with event review itself. `youtube-search` and `nhc-storms`
+		// are same-origin proxies (server-side API key / no upstream CORS); the
+		// per-event image upload writes the org's own photo.
+		register_rest_route(
+			self::NAMESPACE,
+			self::YT_SEARCH_BASE,
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'search_youtube_media' ),
+				'permission_callback' => array( $this, 'require_publish' ),
+				'args'                => array(
+					'q' => array(
+						'type'     => 'string',
+						'required' => true,
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			self::NHC_BASE,
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'list_nhc_storms' ),
+				'permission_callback' => array( $this, 'require_publish' ),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			self::EVENTS_BASE . '/' . self::ID_PATTERN . '/image',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'set_event_image' ),
+				'permission_callback' => array( $this, 'require_publish' ),
 			)
 		);
 
@@ -738,6 +795,67 @@ final class PublisherController {
 		}
 
 		return $this->respond( $client->delete_media_channel( (string) $request->get_param( 'id' ) ) );
+	}
+
+	/**
+	 * GET agency-YouTube video candidates for the pane, keyed by the event title.
+	 * The proxy passes the query straight through; the node holds the API key and
+	 * pre-filters to the allowlisted channels, degrading to `{ videos: [] }`.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function search_youtube_media( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		return $this->respond( $client->search_youtube_media( (string) $request->get_param( 'q' ) ) );
+	}
+
+	/**
+	 * GET the active tropical-cyclone list (proxied same-origin from NHC). The
+	 * pane matches a storm name to a tropical event and builds its cone graphic
+	 * URL client-side.
+	 *
+	 * @return WP_REST_Response
+	 */
+	public function list_nhc_storms(): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		return $this->respond( $client->list_nhc_storms() );
+	}
+
+	/**
+	 * POST upload the org's own photo as an event's story image. The base64 body
+	 * is normalized (raster MIME, size-capped) before it's forwarded; the node
+	 * stores it and returns `{ imageUrl }`.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function set_event_image( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		$body = $this->normalize_event_image_body( (array) $request->get_json_params() );
+		if ( isset( $body['error'] ) ) {
+			return new WP_REST_Response(
+				array(
+					'error'   => 'invalid_image',
+					'message' => (string) $body['error'],
+				),
+				400
+			);
+		}
+
+		return $this->respond( $client->set_event_image( (string) $request->get_param( 'id' ), $body ) );
 	}
 
 	/**
@@ -1910,5 +2028,100 @@ final class PublisherController {
 		}
 
 		return $out;
+	}
+
+	/**
+	 * Validate an event-image upload body before it's forwarded. Returns the
+	 * node-shaped body `{ contentType, dataBase64, altText? }` on success, or
+	 * `{ error }` describing the first failure. The node performs the
+	 * authoritative validation; this is defence in depth so the proxy never
+	 * forwards a non-image or an oversized payload.
+	 *
+	 * The forwarded `contentType` is the type detected from the actual bytes (not
+	 * the caller's claim), so a mislabelled file can't set a wrong MIME.
+	 *
+	 * @param array<string,mixed> $raw Decoded JSON body.
+	 * @return array<string,mixed>
+	 */
+	public function normalize_event_image_body( array $raw ): array {
+		$claimed = ( isset( $raw['contentType'] ) && is_string( $raw['contentType'] ) )
+			? strtolower( trim( $raw['contentType'] ) ) : '';
+		if ( ! in_array( $claimed, self::EVENT_IMAGE_TYPES, true ) ) {
+			return array( 'error' => __( 'Unsupported image type. Use JPEG, PNG, GIF, or WebP.', 'terraviz' ) );
+		}
+
+		$data = ( isset( $raw['dataBase64'] ) && is_string( $raw['dataBase64'] ) ) ? $raw['dataBase64'] : '';
+		// Accept an optional data-URI prefix but forward only the bare base64.
+		$data = (string) preg_replace( '#^data:[^;,]+;base64,#i', '', trim( $data ) );
+		if ( '' === $data ) {
+			return array( 'error' => __( 'The image data is empty.', 'terraviz' ) );
+		}
+
+		// Preflight on the *encoded* length so an oversized payload is rejected
+		// before base64_decode allocates it — base64 is ~4/3 of the decoded size.
+		if ( strlen( $data ) > (int) ceil( self::MAX_EVENT_IMAGE_BYTES / 3 ) * 4 + 4 ) {
+			return array( 'error' => __( 'The image is too large (max 4 MB).', 'terraviz' ) );
+		}
+
+		$decoded = base64_decode( $data, true ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- decoding an uploaded image to validate its real type/size before forwarding.
+		if ( false === $decoded || '' === $decoded ) {
+			return array( 'error' => __( 'The image data is not valid base64.', 'terraviz' ) );
+		}
+		if ( strlen( $decoded ) > self::MAX_EVENT_IMAGE_BYTES ) {
+			return array( 'error' => __( 'The image is too large (max 4 MB).', 'terraviz' ) );
+		}
+
+		// The bytes must really be a raster image of an accepted family, so a
+		// mislabelled non-image can't be forwarded. Sniff the magic bytes rather
+		// than getimagesizefromstring(), which warns ("Read error!") on garbage
+		// input — a warning the WP test harness promotes to a failure.
+		$real_type = $this->sniff_image_mime( $decoded );
+		if ( ! in_array( $real_type, self::EVENT_IMAGE_TYPES, true ) ) {
+			return array( 'error' => __( 'The uploaded file is not a valid image.', 'terraviz' ) );
+		}
+
+		$out = array(
+			'contentType' => $real_type,
+			'dataBase64'  => $data,
+		);
+
+		if ( isset( $raw['altText'] ) && ( is_string( $raw['altText'] ) || is_numeric( $raw['altText'] ) ) ) {
+			$alt = sanitize_text_field( (string) $raw['altText'] );
+			if ( '' !== $alt ) {
+				$out['altText'] = $alt;
+			}
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Identify a raster image family from its leading magic bytes, or '' when the
+	 * bytes aren't one of the accepted types. A pure signature check — no
+	 * `getimagesizefromstring()` (which warns on unreadable input) and no GD
+	 * dependency.
+	 *
+	 * @param string $bytes Decoded file bytes.
+	 * @return string One of {@see self::EVENT_IMAGE_TYPES}, or ''.
+	 */
+	private function sniff_image_mime( string $bytes ): string {
+		if ( strlen( $bytes ) < 12 ) {
+			return '';
+		}
+		if ( "\xFF\xD8\xFF" === substr( $bytes, 0, 3 ) ) {
+			return 'image/jpeg';
+		}
+		if ( "\x89PNG\r\n\x1a\n" === substr( $bytes, 0, 8 ) ) {
+			return 'image/png';
+		}
+		$gif = substr( $bytes, 0, 6 );
+		if ( 'GIF87a' === $gif || 'GIF89a' === $gif ) {
+			return 'image/gif';
+		}
+		if ( 'RIFF' === substr( $bytes, 0, 4 ) && 'WEBP' === substr( $bytes, 8, 4 ) ) {
+			return 'image/webp';
+		}
+
+		return '';
 	}
 }
