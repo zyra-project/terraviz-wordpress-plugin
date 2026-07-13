@@ -10,11 +10,14 @@
  * `events/:id/image` proxy first; its returned `imageUrl` is then picked the
  * same way.
  *
- * Sources: a NASA Worldview satellite snapshot (composed client-side from the
- * event's date + location), an NHC forecast cone for named tropical storms (via
- * the `nhc-storms` proxy), and agency-YouTube videos keyed by the event title
- * (via the `youtube-search` proxy). Each is best-effort and self-hides when its
- * preview fails to load.
+ * Image sources: a NASA Worldview satellite snapshot (composed client-side from
+ * the event's date + location), a USGS ShakeMap intensity map for earthquake
+ * events, an NHC forecast cone for named tropical storms, and nearby
+ * public-domain Wikimedia Commons photos. Video source: agency-YouTube keyed by
+ * the event title. `youtube-search` and `nhc-storms` go through the node proxy;
+ * Commons and USGS are keyless CORS APIs fetched straight from the browser (the
+ * plugin's PHP never calls a third party). Each source is best-effort and its
+ * card self-hides when its preview fails to load.
  */
 import { __ } from '@wordpress/i18n';
 import { useState, useEffect, useCallback, useRef } from '@wordpress/element';
@@ -233,14 +236,18 @@ export default function MediaSuggest( { event, edits, onPick } ) {
 	const wantImage = ! hasImage && ( located || looksLikeTropical( event ) );
 	const wantVideo = ! hasVideo && Boolean( title );
 
-	// Fetch the async sources once per event. The Worldview snapshot needs no
-	// fetch (it's a composed URL); YouTube + NHC go through the node proxies,
-	// while Commons + USGS are keyless CORS APIs fetched straight from the
-	// browser (the plugin's PHP never calls a third party).
+	// Fetch only the sources a track actually needs, and only while that track
+	// is open: YouTube while videoless, the image sources while imageless.
+	// Depending on wantImage/wantVideo means clearing a filled field later
+	// re-opens its track and refetches. The Worldview snapshot needs no fetch
+	// (it's a composed URL); YouTube + NHC go through the node proxies, while
+	// Commons + USGS are keyless CORS APIs fetched straight from the browser
+	// (the plugin's PHP never calls a third party).
 	useEffect( () => {
 		let active = true;
 		const jobs = [];
-		if ( title ) {
+
+		if ( wantVideo ) {
 			jobs.push(
 				searchYoutubeMedia( title )
 					.then( ( res ) => {
@@ -255,40 +262,53 @@ export default function MediaSuggest( { event, edits, onPick } ) {
 		} else {
 			setVideos( [] );
 		}
-		if ( looksLikeTropical( event ) ) {
+
+		if ( wantImage ) {
+			if ( looksLikeTropical( event ) ) {
+				jobs.push(
+					listNhcStorms()
+						.then( ( res ) => {
+							if ( active ) {
+								setStorms(
+									Array.isArray( res.activeStorms )
+										? res.activeStorms
+										: []
+								);
+							}
+						} )
+						.catch( () => active && setStorms( [] ) )
+				);
+			} else {
+				setStorms( [] );
+			}
 			jobs.push(
-				listNhcStorms()
-					.then( ( res ) => {
-						if ( active ) {
-							setStorms(
-								Array.isArray( res.activeStorms )
-									? res.activeStorms
-									: []
-							);
-						}
-					} )
-					.catch( () => active && setStorms( [] ) )
+				fetchCommonsSuggestions( event ).then(
+					( list ) =>
+						active &&
+						setCommons( Array.isArray( list ) ? list : [] )
+				)
+			);
+			jobs.push(
+				fetchShakemapSuggestion( event ).then(
+					( s ) => active && setShakemap( s || null )
+				)
 			);
 		} else {
 			setStorms( [] );
+			setCommons( [] );
+			setShakemap( null );
 		}
-		jobs.push(
-			fetchCommonsSuggestions( event ).then(
-				( list ) =>
-					active && setCommons( Array.isArray( list ) ? list : [] )
-			)
-		);
-		jobs.push(
-			fetchShakemapSuggestion( event ).then(
-				( s ) => active && setShakemap( s || null )
-			)
-		);
-		setLoading( true );
-		Promise.all( jobs ).finally( () => active && setLoading( false ) );
+
+		if ( jobs.length ) {
+			setLoading( true );
+			Promise.all( jobs ).finally( () => active && setLoading( false ) );
+		} else {
+			setLoading( false );
+		}
 		return () => {
 			active = false;
 		};
-	}, [ event, title ] );
+	}, [ event, title, wantImage, wantVideo ] );
 
 	const markFailed = useCallback( ( url ) => {
 		setFailed( ( prev ) => {
