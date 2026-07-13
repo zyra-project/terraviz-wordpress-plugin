@@ -137,12 +137,18 @@ This realises the maintainer's three asks: WordPress posts as the surface,
 Terraviz seeding initial content, and the markdown-back sync (via the existing
 Phase-4 path on the next WP publish).
 
-### 4.4 Optional: a Terraviz blog post template
+### 4.4 A Terraviz blog post starter pattern — ✅ shipped
 
-"Perhaps a page template of some kind." A block-template / starter-pattern for
-Terraviz-grounded posts (pre-seeds a dataset/tour block + the opt-in) so authors
-get the grounding scaffold. **Deferred, optional** — not required for the flow
-above; tracked as a later enhancement so the core list + seed ship first.
+"Perhaps a page template of some kind." Shipped as a **block pattern** —
+"Terraviz-grounded post," under a **Terraviz** pattern category — the WP-native,
+no-build way to give an author starting a *fresh* WordPress post the grounding
+scaffold (the from-scratch mirror of the slice-2 node→WP seed). It seeds a lead
+paragraph, an "Explore the data" heading, a live `terraviz/dataset` embed **with
+no id** (so the block shows its dataset picker for the author to fill in), and a
+tip pointing at the "Show this post in Terraviz" opt-in panel. Pattern *content*
+can't flip the opt-in meta, so the tip nudges the author to the panel that
+{@see PostPanel} already renders. `src/Blog/Patterns.php`, registered on `init`,
+scoped to `postTypes: ['post']`.
 
 ### 4.5 Media in the Blog area
 
@@ -214,7 +220,11 @@ capability that belongs on the **Event review** screen, not here — see §9.
    `![alt](url)` images / bare video URLs become `core/image` / `core/embed`
    blocks (all URLs `esc_url`'d). Tables/ordered-lists/fenced-code (and richer
    md→block fidelity) are a later refinement.
-3. **Blog post template** (optional) — starter pattern/template.
+3. ✅ **Blog post starter pattern** — a "Terraviz-grounded post" block pattern
+   (+ a Terraviz pattern category), scoped to `post`, seeding a lead paragraph /
+   "Explore the data" heading / a live `terraviz/dataset` embed (author picks the
+   dataset via the block's own typeahead) / a tip pointing at the opt-in panel.
+   PHP-only, no build step. `src/Blog/Patterns.php`.
 
 Each slice is its own PR. Slice 1 is the deck-faithful list and is independently
 useful; slices 2–3 layer the node→WP authoring loop.

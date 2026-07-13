@@ -57,6 +57,7 @@ final class Plugin {
 		add_action( 'rest_api_init', array( new Rest\PublisherController(), 'register' ) );
 
 		( new Blog\Sync() )->register();
+		( new Blog\Patterns() )->register();
 		( new Events\Sync() )->register();
 
 		if ( is_admin() ) {
