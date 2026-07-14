@@ -83,6 +83,14 @@ final class PublisherController {
 	private const EVENT_IMAGE_TYPES = array( 'image/jpeg', 'image/png', 'image/gif', 'image/webp' );
 
 	/**
+	 * Cap + accepted types for a node-profile logo — tighter than an event image
+	 * (the node stores raster png/jpeg/webp only, ≤512 KB; no GIF), so the proxy
+	 * rejects a disallowed logo locally instead of forwarding it.
+	 */
+	private const MAX_LOGO_BYTES = 524288;
+	private const LOGO_TYPES     = array( 'image/png', 'image/jpeg', 'image/webp' );
+
+	/**
 	 * Free-text / reference string fields accepted on a dataset body.
 	 */
 	private const STRING_FIELDS = array(
@@ -486,7 +494,7 @@ final class PublisherController {
 		// default tone, links, logo) that grounds generated drafts and brands the
 		// public blog. Operator-wide config the node restricts to admin/service, so
 		// the plugin gates the whole area at the configure tier (like Feeds). The
-		// literal `/logo` route is registered before nothing else could shadow it.
+		// logo lives on its own exact `/logo` route.
 		register_rest_route(
 			self::NAMESPACE,
 			self::NODE_PROFILE_BASE,
@@ -851,7 +859,7 @@ final class PublisherController {
 			return $this->credential_missing();
 		}
 
-		$body = $this->normalize_event_image_body( (array) $request->get_json_params() );
+		$body = $this->normalize_logo_body( (array) $request->get_json_params() );
 		if ( isset( $body['error'] ) ) {
 			return new WP_REST_Response(
 				array(
@@ -2291,10 +2299,52 @@ final class PublisherController {
 	 * @return array<string,mixed>
 	 */
 	public function normalize_event_image_body( array $raw ): array {
+		return $this->validate_image_upload(
+			$raw,
+			self::EVENT_IMAGE_TYPES,
+			self::MAX_EVENT_IMAGE_BYTES,
+			__( 'Unsupported image type. Use JPEG, PNG, GIF, or WebP.', 'terraviz' ),
+			__( 'The image is too large (max 4 MB).', 'terraviz' )
+		);
+	}
+
+	/**
+	 * Validate a node-profile logo upload — the same magic-byte check as an event
+	 * image, but restricted to the node's logo rules (PNG/JPEG/WebP, ≤512 KB, no
+	 * GIF) so a disallowed logo is rejected here rather than forwarded.
+	 *
+	 * @param array<string,mixed> $raw Decoded JSON body.
+	 * @return array<string,mixed>
+	 */
+	public function normalize_logo_body( array $raw ): array {
+		return $this->validate_image_upload(
+			$raw,
+			self::LOGO_TYPES,
+			self::MAX_LOGO_BYTES,
+			__( 'Unsupported logo type. Use PNG, JPEG, or WebP.', 'terraviz' ),
+			__( 'The logo is too large (max 512 KB).', 'terraviz' )
+		);
+	}
+
+	/**
+	 * Validate a base64 image upload against a given type allowlist and size cap.
+	 * Returns the node-shaped body `{ contentType, dataBase64, altText? }` on
+	 * success, or `{ error }` describing the first failure. The forwarded
+	 * `contentType` is the type detected from the actual bytes (not the caller's
+	 * claim), so a mislabelled file can't set a wrong MIME.
+	 *
+	 * @param array<string,mixed> $raw           Decoded JSON body.
+	 * @param array<int,string>   $allowed_types Accepted MIME types.
+	 * @param int                 $max_bytes     Decoded-size cap.
+	 * @param string              $type_error    Message for a disallowed type.
+	 * @param string              $size_error    Message for an oversized upload.
+	 * @return array<string,mixed>
+	 */
+	private function validate_image_upload( array $raw, array $allowed_types, int $max_bytes, string $type_error, string $size_error ): array {
 		$claimed = ( isset( $raw['contentType'] ) && is_string( $raw['contentType'] ) )
 			? strtolower( trim( $raw['contentType'] ) ) : '';
-		if ( ! in_array( $claimed, self::EVENT_IMAGE_TYPES, true ) ) {
-			return array( 'error' => __( 'Unsupported image type. Use JPEG, PNG, GIF, or WebP.', 'terraviz' ) );
+		if ( ! in_array( $claimed, $allowed_types, true ) ) {
+			return array( 'error' => $type_error );
 		}
 
 		$data = ( isset( $raw['dataBase64'] ) && is_string( $raw['dataBase64'] ) ) ? $raw['dataBase64'] : '';
@@ -2306,16 +2356,16 @@ final class PublisherController {
 
 		// Preflight on the *encoded* length so an oversized payload is rejected
 		// before base64_decode allocates it — base64 is ~4/3 of the decoded size.
-		if ( strlen( $data ) > (int) ceil( self::MAX_EVENT_IMAGE_BYTES / 3 ) * 4 + 4 ) {
-			return array( 'error' => __( 'The image is too large (max 4 MB).', 'terraviz' ) );
+		if ( strlen( $data ) > (int) ceil( $max_bytes / 3 ) * 4 + 4 ) {
+			return array( 'error' => $size_error );
 		}
 
 		$decoded = base64_decode( $data, true ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- decoding an uploaded image to validate its real type/size before forwarding.
 		if ( false === $decoded || '' === $decoded ) {
 			return array( 'error' => __( 'The image data is not valid base64.', 'terraviz' ) );
 		}
-		if ( strlen( $decoded ) > self::MAX_EVENT_IMAGE_BYTES ) {
-			return array( 'error' => __( 'The image is too large (max 4 MB).', 'terraviz' ) );
+		if ( strlen( $decoded ) > $max_bytes ) {
+			return array( 'error' => $size_error );
 		}
 
 		// The bytes must really be a raster image of an accepted family, so a
@@ -2323,7 +2373,7 @@ final class PublisherController {
 		// than getimagesizefromstring(), which warns ("Read error!") on garbage
 		// input — a warning the WP test harness promotes to a failure.
 		$real_type = $this->sniff_image_mime( $decoded );
-		if ( ! in_array( $real_type, self::EVENT_IMAGE_TYPES, true ) ) {
+		if ( ! in_array( $real_type, $allowed_types, true ) ) {
 			return array( 'error' => __( 'The uploaded file is not a valid image.', 'terraviz' ) );
 		}
 

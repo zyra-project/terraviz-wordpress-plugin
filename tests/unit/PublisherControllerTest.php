@@ -1997,7 +1997,57 @@ class PublisherControllerTest extends WP_UnitTestCase {
 		$put->set_body( (string) wp_json_encode( array( 'orgName' => 'X' ) ) );
 		$this->assertSame( 409, $this->controller->set_node_profile( $put )->get_status() );
 
+		// Logo POST has its own entry point, so cover it too.
+		$logo = new WP_REST_Request( 'POST' );
+		$logo->set_header( 'Content-Type', 'application/json' );
+		$logo->set_body(
+			(string) wp_json_encode(
+				array(
+					'contentType' => 'image/png',
+					'dataBase64'  => $this->png_base64(),
+				)
+			)
+		);
+		$this->assertSame( 409, $this->controller->set_node_profile_logo( $logo )->get_status() );
+
 		$this->assertSame( 409, $this->controller->delete_node_profile_logo()->get_status() );
+	}
+
+	public function test_logo_rejects_gif_locally_without_forwarding(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		// GIF is allowed for an event image but NOT for a logo (png/jpeg/webp
+		// only), so the proxy rejects it locally rather than forwarding it.
+		$request = new WP_REST_Request( 'POST' );
+		$request->set_header( 'Content-Type', 'application/json' );
+		$request->set_body(
+			(string) wp_json_encode(
+				array(
+					'contentType' => 'image/gif',
+					'dataBase64'  => base64_encode( 'GIF89a' . str_repeat( 'x', 32 ) ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+				)
+			)
+		);
+		$response = $this->controller->set_node_profile_logo( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 400, $response->get_status() );
+		$this->assertSame( 'invalid_image', $response->get_data()['error'] );
+		$this->assertNotContains( 'POST', $this->sent_methods );
+
+		// The generic image normalizer still accepts a GIF (event images do).
+		$this->assertArrayNotHasKey(
+			'error',
+			$this->controller->normalize_event_image_body(
+				array(
+					'contentType' => 'image/gif',
+					'dataBase64'  => base64_encode( "GIF89a\x01\x00\x01\x00\x00\x00\x00" ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+				)
+			)
+		);
 	}
 
 	public function test_normalize_node_profile_body_allowlists_and_preserves_markdown(): void {
