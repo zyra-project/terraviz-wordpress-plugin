@@ -75,16 +75,13 @@ function toolbar() {
 		},
 		'|',
 		{
+			// The inline preview toggles *in place*, bounded to the field.
+			// EasyMDE's side-by-side mode is fixed/fullscreen by design, so it's
+			// deliberately omitted — it would take over the whole screen.
 			name: 'preview',
 			action: EasyMDE.togglePreview,
 			className: 'dashicons dashicons-visibility no-disable',
 			title: __( 'Toggle preview', 'terraviz' ),
-		},
-		{
-			name: 'side-by-side',
-			action: EasyMDE.toggleSideBySide,
-			className: 'dashicons dashicons-columns no-disable',
-			title: __( 'Side-by-side preview', 'terraviz' ),
 		},
 	];
 }
@@ -115,6 +112,14 @@ export default function MarkdownField( { value, onChange, placeholder } ) {
 			minHeight: '160px',
 			placeholder: placeholder || '',
 			toolbar: toolbar(),
+			// Keep the editor bounded to the field: EasyMDE's side-by-side (F9)
+			// and fullscreen (F11) modes are fixed/fullscreen, so disable those
+			// shortcuts (the buttons are already omitted). The inline preview
+			// (Cmd/Ctrl+P) stays.
+			shortcuts: {
+				toggleSideBySide: null,
+				toggleFullScreen: null,
+			},
 		} );
 		editor.codemirror.on( 'change', () => {
 			onChangeRef.current( editor.value() );
