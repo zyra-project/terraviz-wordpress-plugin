@@ -25,6 +25,7 @@ import {
 	normalizeError,
 } from './api';
 import { safeHttpUrl } from './safeUrl';
+import MarkdownField from './MarkdownField';
 
 const MAX_LINKS = 10;
 const LOGO_MAX_BYTES = 512 * 1024;
@@ -358,14 +359,38 @@ export default function NodeProfile() {
 				rows={ 3 }
 				__nextHasNoMarginBottom
 			/>
-			<TextareaControl
-				label={ __( 'About (Markdown)', 'terraviz' ) }
-				value={ form.aboutMd }
-				onChange={ set( 'aboutMd' ) }
-				help={ fieldError( 'aboutMd' ) }
-				rows={ 6 }
-				__nextHasNoMarginBottom
-			/>
+			<div style={ { marginBottom: '8px' } }>
+				<div
+					style={ {
+						fontSize: '11px',
+						fontWeight: 500,
+						textTransform: 'uppercase',
+						marginBottom: '4px',
+						color: '#1e1e1e',
+					} }
+				>
+					{ __( 'About (Markdown)', 'terraviz' ) }
+				</div>
+				<MarkdownField
+					value={ form.aboutMd }
+					onChange={ set( 'aboutMd' ) }
+					placeholder={ __(
+						'Tell readers who you are. Markdown supported.',
+						'terraviz'
+					) }
+				/>
+				{ fieldError( 'aboutMd' ) && (
+					<p
+						style={ {
+							color: '#d63638',
+							fontSize: '12px',
+							marginTop: '4px',
+						} }
+					>
+						{ fieldError( 'aboutMd' ) }
+					</p>
+				) }
+			</div>
 
 			<h3>{ __( 'Links', 'terraviz' ) }</h3>
 			{ links.length === 0 && (

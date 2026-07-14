@@ -99,6 +99,17 @@ final class Dashboard {
 		);
 
 		wp_enqueue_style( 'wp-components' );
+		// The dashboard bundles component CSS (the EasyMDE Markdown editor on the
+		// Node profile screen); its toolbar renders with wp-admin's Dashicons, so
+		// no icon font is loaded from anywhere.
+		if ( is_readable( TERRAVIZ_PLUGIN_DIR . 'build/admin/index.css' ) ) {
+			wp_enqueue_style(
+				self::HANDLE,
+				TERRAVIZ_PLUGIN_URL . 'build/admin/index.css',
+				array( 'wp-components', 'dashicons' ),
+				$asset['version']
+			);
+		}
 		wp_set_script_translations( self::HANDLE, 'terraviz' );
 
 		wp_add_inline_script(

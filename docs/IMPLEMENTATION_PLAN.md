@@ -343,8 +343,12 @@ located upstream:
 > authoritative validator; its field-error envelope surfaces inline.
 > `PublishClient::{get,set}_node_profile` + `{set,delete}_node_profile_logo`,
 > `PublisherController` (`NODE_PROFILE_BASE` GET/PUT + `/logo` POST/DELETE routes,
-> `normalize_node_profile_body`; the logo reuses the raster-image validator). The
-> Sidebar item flips `built: true`.
+> `normalize_node_profile_body`; the logo has its own PNG/JPEG/WebP ≤512 KB
+> validator). The Sidebar item flips `built: true`. The **About** field uses an
+> **EasyMDE** Markdown editor (`blocks/admin/MarkdownField.js`) — toolbar + live
+> preview, keeping Markdown as the stored value; self-contained (no Font
+> Awesome/CDN — `autoDownloadFontAwesome: false`, toolbar rendered with wp-admin
+> Dashicons). Its CSS ships in `build/admin/index.css`, enqueued by the Dashboard.
 
 ---
 
