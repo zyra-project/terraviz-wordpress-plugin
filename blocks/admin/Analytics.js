@@ -46,8 +46,8 @@ const cardStyle = {
 };
 
 /**
- * Format an integer with thousands separators (locale-independent grouping is
- * fine here — these are internal dashboard figures).
+ * Format an integer with thousands separators grouped for the viewer's locale
+ * (`toLocaleString()` — fine here, these are internal dashboard figures).
  *
  * @param {number} n Value.
  * @return {string} Grouped digits, or '0'.
@@ -294,8 +294,8 @@ function Sparkline( { days } ) {
 					'terraviz'
 				) }
 				style={ { display: 'block', overflow: 'visible' } }
-				onMouseMove={ onMove }
-				onMouseLeave={ () => setHover( null ) }
+				onPointerMove={ onMove }
+				onPointerLeave={ () => setHover( null ) }
 			>
 				<polygon points={ area } fill={ ACCENT } fillOpacity="0.08" />
 				<polyline

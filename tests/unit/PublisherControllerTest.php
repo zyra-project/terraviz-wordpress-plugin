@@ -2185,5 +2185,25 @@ class PublisherControllerTest extends WP_UnitTestCase {
 			)
 		);
 		$this->assertSame( array(), $bounded );
+
+		// The spatial-only refinements are stripped for every non-spatial section,
+		// so a valid overview request can't carry a stray refinement the node
+		// might reject.
+		$non_spatial = $this->controller->normalize_analytics_query(
+			array(
+				'section'    => 'overview',
+				'days'       => '30',
+				'event'      => 'map_click',
+				'projection' => 'globe',
+				'layer'      => 'quakes',
+			)
+		);
+		$this->assertSame(
+			array(
+				'section' => 'overview',
+				'days'    => '30',
+			),
+			$non_spatial
+		);
 	}
 }

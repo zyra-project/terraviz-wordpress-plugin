@@ -2539,6 +2539,11 @@ final class PublisherController {
 	 * against a fixed enum and out-of-range values are dropped (the node applies
 	 * its default and re-validates); nothing arbitrary is forwarded.
 	 *
+	 * The `event` / `projection` / `layer` refinements only mean anything for the
+	 * spatial section, so they are forwarded only when `section=spatial` — a node
+	 * that strictly validates per-section can't then 4xx an otherwise-valid
+	 * overview request that happened to carry a stray refinement.
+	 *
 	 * @param array<string,mixed> $raw Request query params.
 	 * @return array<string,string>
 	 */
@@ -2560,12 +2565,19 @@ final class PublisherController {
 			}
 		}
 
+		$is_spatial = isset( $out['section'] ) && 'spatial' === $out['section'];
+
 		// A spatial layer id (ULID or slug) — reduced to the canonical charset.
-		if ( isset( $raw['layer'] ) && ( is_string( $raw['layer'] ) || is_numeric( $raw['layer'] ) ) ) {
+		if ( $is_spatial && isset( $raw['layer'] ) && ( is_string( $raw['layer'] ) || is_numeric( $raw['layer'] ) ) ) {
 			$layer = $this->clean_block_id( (string) $raw['layer'] );
 			if ( '' !== $layer ) {
 				$out['layer'] = $layer;
 			}
+		}
+
+		// Drop the spatial-only refinements for every other section.
+		if ( ! $is_spatial ) {
+			unset( $out['event'], $out['projection'] );
 		}
 
 		return $out;
