@@ -2169,8 +2169,9 @@ class PublisherControllerTest extends WP_UnitTestCase {
 		$this->assertSame( 'preview', $out['environment'] );
 		$this->assertSame( 'map_click', $out['event'] );
 		$this->assertSame( 'globe', $out['projection'] );
-		// A layer id is reduced to the canonical [a-z0-9_-] charset.
-		$this->assertSame( 'mylayerscript', $out['layer'] );
+		// A layer id is reduced to the canonical id charset ([A-Za-z0-9._:-]),
+		// which preserves case and strips spaces / punctuation.
+		$this->assertSame( 'MyLayerscript', $out['layer'] );
 		$this->assertArrayNotHasKey( 'stray', $out );
 		$this->assertArrayNotHasKey( 'days_bad', $out );
 
