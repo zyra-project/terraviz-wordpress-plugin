@@ -57,6 +57,7 @@ final class PublisherController {
 	private const NHC_BASE          = '/publisher/media/nhc-storms';
 	private const BLOG_BASE         = '/publisher/blog';
 	private const NODE_PROFILE_BASE = '/publisher/node-profile';
+	private const ANALYTICS_BASE    = '/publisher/analytics';
 
 	/**
 	 * URL-segment pattern for a dataset id (ULID or slug).
@@ -528,6 +529,19 @@ final class PublisherController {
 				),
 			)
 		);
+
+		// Analytics — the read-only metrics facade (the node validates every
+		// parameter against an allowlist; it is not a SQL proxy). Viewing insights
+		// is a publish-tier action, matching the Insights nav group.
+		register_rest_route(
+			self::NAMESPACE,
+			self::ANALYTICS_BASE,
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_analytics' ),
+				'permission_callback' => array( $this, 'require_publish' ),
+			)
+		);
 	}
 
 	/**
@@ -887,6 +901,23 @@ final class PublisherController {
 		}
 
 		return $this->respond( $client->delete_node_profile_logo() );
+	}
+
+	/**
+	 * GET a typed analytics section. The query is reduced to an allowlist before
+	 * it's forwarded (the node re-validates and is the authority); an out-of-range
+	 * value is simply dropped so the node applies its default.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function get_analytics( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		return $this->respond( $client->get_analytics( $this->normalize_analytics_query( $request->get_query_params() ) ) );
 	}
 
 	/**
@@ -2497,6 +2528,44 @@ final class PublisherController {
 				}
 			}
 			$out['links'] = $links;
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Reduce an analytics query to the node's allowlist: the section + range +
+	 * environment, plus the spatial-only refinements. Every value is checked
+	 * against a fixed enum and out-of-range values are dropped (the node applies
+	 * its default and re-validates); nothing arbitrary is forwarded.
+	 *
+	 * @param array<string,mixed> $raw Request query params.
+	 * @return array<string,string>
+	 */
+	public function normalize_analytics_query( array $raw ): array {
+		$out = array();
+
+		$enums = array(
+			'section'     => array( 'overview', 'datasets', 'spatial', 'funnel', 'errors', 'perf', 'orbit', 'research' ),
+			'days'        => array( '7', '30', '90', '365' ),
+			'environment' => array( 'production', 'preview' ),
+			'event'       => array( 'camera_settled', 'map_click' ),
+			'projection'  => array( 'globe', 'mercator', 'vr', 'ar' ),
+		);
+		foreach ( $enums as $key => $allowed ) {
+			if ( isset( $raw[ $key ] ) && ( is_string( $raw[ $key ] ) || is_numeric( $raw[ $key ] ) )
+				&& in_array( (string) $raw[ $key ], $allowed, true )
+			) {
+				$out[ $key ] = (string) $raw[ $key ];
+			}
+		}
+
+		// A spatial layer id (ULID or slug) — reduced to the canonical charset.
+		if ( isset( $raw['layer'] ) && ( is_string( $raw['layer'] ) || is_numeric( $raw['layer'] ) ) ) {
+			$layer = $this->clean_block_id( (string) $raw['layer'] );
+			if ( '' !== $layer ) {
+				$out['layer'] = $layer;
+			}
 		}
 
 		return $out;

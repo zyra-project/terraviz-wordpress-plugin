@@ -327,7 +327,7 @@ located upstream:
 
 | Area | Upstream contract | Note |
 |---|---|---|
-| **Analytics** | `analytics.ts`, `analytics-export.ts` | sessions / view time / platform-OS mix / top countries + CSV |
+| **Analytics** | `analytics.ts`, `analytics-export.ts` | ✅ **overview shipped** — sessions / view time / platform-OS mix / top countries; deeper sections deferred |
 | **Feedback** | `feedback.ts` | Orbit AI ratings + general feedback |
 | **Tours CRUD** | `tours.ts`, `tours/[id]*.ts`, `tours/draft.ts` | full lifecycle (embed block already exists for read) |
 | **Import** | (bulk manifest) | CSV/JSON → drafts; remote-node + CLI paths are out of plugin scope |
@@ -335,6 +335,24 @@ located upstream:
 | **Node profile** | `node-profile.ts`, `node-profile/logo.ts` | ✅ **shipped** — org identity + logo |
 | **Team** | `publishers.ts` | ⚠️ **read-only / deferred** — clashes with the shared-`service` identity (Phase 2); the dashboard surfaces "acting as the shared publisher" rather than per-user management |
 
+> **Analytics — overview (shipped).** The `Insights → Analytics` view
+> (`blocks/admin/Analytics.js`, publish-tier) is a read-only facade over the
+> node's typed rollup endpoint (`GET /publish/analytics?section=overview&…`): a
+> **range** (7/30/90/365 days) + **environment** (production/preview) filter over
+> stat tiles (sessions, view time, events, errors), a daily-sessions **sparkline**
+> (single series, hover crosshair), and single-hue horizontal-bar breakdowns for
+> **platforms**, **operating systems**, and **top countries** (one measure, one
+> hue — no categorical palette; each bar is direct-labelled so it doubles as its
+> own table). `PublishClient::get_analytics` + `PublisherController`
+> (`ANALYTICS_BASE` GET route, `normalize_analytics_query`: the query is reduced to
+> a fixed allowlist — section/days/environment plus the spatial refinements —
+> before forwarding; the node re-validates and is the authority). No CSV export:
+> `analytics-export.ts` is the node's **nightly ingestion cron tick** (Analytics
+> Engine → R2), not a user download, so the plugin does not surface it. The Sidebar
+> item flips `built: true`. Deeper sections (datasets, spatial, funnel, errors,
+> perf, orbit, research) reuse the same route with a different `section` and are
+> deferred.
+>
 > **Node profile (shipped).** The `Settings → Node profile` view
 > (`blocks/admin/NodeProfile.js`, configure-tier) edits the host org's identity —
 > name (required), mission, about (Markdown), region focus, default tone, up to

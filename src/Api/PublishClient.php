@@ -540,6 +540,26 @@ final class PublishClient {
 	}
 
 	/**
+	 * `GET /api/v1/publish/analytics?section=&days=&environment=…` — the typed
+	 * analytics facade over the node's daily rollups (not a SQL proxy; the node
+	 * validates every parameter against an allowlist). Returns
+	 * `{ section, since_day, through_day, environment, data }`; the `data` shape
+	 * depends on the section (Overview: totals + daily days[] + platform/OS mix +
+	 * top countries).
+	 *
+	 * @param array<string,string> $query Allowlisted query params.
+	 * @return array<string,mixed>
+	 */
+	public function get_analytics( array $query ): array {
+		$path = '/api/v1/publish/analytics';
+		if ( ! empty( $query ) ) {
+			$path .= '?' . http_build_query( $query );
+		}
+
+		return $this->send( 'GET', $path );
+	}
+
+	/**
 	 * `GET /api/v1/featured-hero` — read the current "right now" hero override.
 	 *
 	 * This is the *public* read endpoint (the publish route exposes no

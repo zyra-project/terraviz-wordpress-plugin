@@ -25,6 +25,7 @@ import MediaChannels from './MediaChannels';
 import SubTabs from './SubTabs';
 import Blog from './Blog';
 import NodeProfile from './NodeProfile';
+import Analytics from './Analytics';
 import { deriveStatus } from './status';
 import {
 	listDatasets,
@@ -503,6 +504,8 @@ export default function App( { boot } ) {
 				return <Blog boot={ boot } />;
 			case 'node-profile':
 				return <NodeProfile />;
+			case 'analytics':
+				return <Analytics />;
 			default:
 				return <ComingSoon sectionKey={ activeSection } />;
 		}

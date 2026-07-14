@@ -405,6 +405,24 @@ export function deleteNodeProfileLogo() {
 	} );
 }
 
+const analyticsUrl = () => `${ root }/analytics`;
+
+/**
+ * Read a typed analytics section. The node validates every parameter against an
+ * allowlist and returns `{ section, since_day, through_day, environment, data }`
+ * — the `data` shape depends on the section (Overview: totals + daily `days[]` +
+ * platform/OS mix + top countries). Unknown/out-of-range params are dropped by
+ * the PHP proxy before they reach the node, which re-validates.
+ *
+ * @param {Object} [query] `{ section?, days?, environment?, event?, projection?, layer? }`.
+ * @return {Promise<Object>} The section envelope.
+ */
+export function getAnalytics( query ) {
+	const qs = new URLSearchParams( query || {} ).toString();
+	const url = qs ? `${ analyticsUrl() }?${ qs }` : analyticsUrl();
+	return apiFetch( { url } );
+}
+
 /**
  * Normalise an apiFetch rejection into `{ message, errors }`. apiFetch rejects
  * with the parsed JSON error body, so field-validation errors from the node

@@ -97,7 +97,7 @@ export const NAV = [
 				key: 'analytics',
 				label: __( 'Analytics', 'terraviz' ),
 				tier: 'publish',
-				built: false,
+				built: true,
 			},
 			{
 				key: 'feedback',

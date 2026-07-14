@@ -2083,4 +2083,106 @@ class PublisherControllerTest extends WP_UnitTestCase {
 		$this->assertSame( 'https://x.org', $out['links'][0]['url'] );
 		$this->assertSame( '', $out['links'][1]['url'] );
 	}
+
+	public function test_analytics_route_requires_publish_tier(): void {
+		$editor      = self::factory()->user->create( array( 'role' => 'editor' ) );
+		$contributor = self::factory()->user->create( array( 'role' => 'contributor' ) );
+
+		// Viewing insights is a publish-tier action (it sits in the Insights nav
+		// group), so a draft-only contributor is not enough.
+		wp_set_current_user( $editor );
+		$this->assertTrue( $this->controller->require_publish() );
+
+		wp_set_current_user( $contributor );
+		$this->assertFalse( $this->controller->require_publish() );
+	}
+
+	public function test_get_analytics_forwards_get_with_allowlisted_query(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['GET'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode(
+				array(
+					'section'     => 'overview',
+					'environment' => 'production',
+					'data'        => array( 'totals' => array( 'sessions' => 42 ) ),
+				)
+			),
+		);
+
+		$request = new WP_REST_Request( 'GET' );
+		$request->set_query_params(
+			array(
+				'section'     => 'overview',
+				'days'        => '30',
+				'environment' => 'production',
+				// Not allowlisted / out of range — must be dropped, not forwarded.
+				'event'       => 'not-an-event',
+				'sql'         => 'DROP TABLE',
+			)
+		);
+		$response = $this->controller->get_analytics( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+
+		$url = end( $this->sent_urls );
+		$this->assertStringContainsString( '/api/v1/publish/analytics?', $url );
+		$this->assertStringContainsString( 'section=overview', $url );
+		$this->assertStringContainsString( 'days=30', $url );
+		$this->assertStringContainsString( 'environment=production', $url );
+		// The junk parameters never reach the node.
+		$this->assertStringNotContainsString( 'event=', $url );
+		$this->assertStringNotContainsString( 'sql=', $url );
+		$this->assertStringNotContainsString( 'DROP', $url );
+	}
+
+	public function test_get_analytics_without_credential_returns_409(): void {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		$response = $this->controller->get_analytics( new WP_REST_Request( 'GET' ) );
+		$this->assertSame( 409, $response->get_status() );
+		$this->assertSame( 'credential_missing', $response->get_data()['error'] );
+	}
+
+	public function test_normalize_analytics_query_allowlists_and_drops_out_of_range(): void {
+		$out = $this->controller->normalize_analytics_query(
+			array(
+				'section'     => 'spatial',
+				'days'        => '90',
+				'environment' => 'preview',
+				'event'       => 'map_click',
+				'projection'  => 'globe',
+				'layer'       => '  My Layer!! <script>  ',
+				// Out of range / wrong shape — all dropped.
+				'days_bad'    => '13',
+				'section_bad' => array( 'overview' ),
+				'stray'       => 'x',
+			)
+		);
+
+		$this->assertSame( 'spatial', $out['section'] );
+		$this->assertSame( '90', $out['days'] );
+		$this->assertSame( 'preview', $out['environment'] );
+		$this->assertSame( 'map_click', $out['event'] );
+		$this->assertSame( 'globe', $out['projection'] );
+		// A layer id is reduced to the canonical [a-z0-9_-] charset.
+		$this->assertSame( 'mylayerscript', $out['layer'] );
+		$this->assertArrayNotHasKey( 'stray', $out );
+		$this->assertArrayNotHasKey( 'days_bad', $out );
+
+		// Out-of-range enum values are dropped so the node applies its default.
+		$bounded = $this->controller->normalize_analytics_query(
+			array(
+				'section'     => 'nope',
+				'days'        => '13',
+				'environment' => 'staging',
+				'projection'  => 'hologram',
+			)
+		);
+		$this->assertSame( array(), $bounded );
+	}
 }
