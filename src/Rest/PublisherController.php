@@ -47,15 +47,16 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class PublisherController {
 
-	private const NAMESPACE      = 'terraviz/v1';
-	private const BASE           = '/publisher/datasets';
-	private const EVENTS_BASE    = '/publisher/events';
-	private const FEEDS_BASE     = '/publisher/feeds';
-	private const HERO_BASE      = '/publisher/featured-hero';
-	private const MEDIA_BASE     = '/publisher/media/youtube-channels';
-	private const YT_SEARCH_BASE = '/publisher/media/youtube-search';
-	private const NHC_BASE       = '/publisher/media/nhc-storms';
-	private const BLOG_BASE      = '/publisher/blog';
+	private const NAMESPACE         = 'terraviz/v1';
+	private const BASE              = '/publisher/datasets';
+	private const EVENTS_BASE       = '/publisher/events';
+	private const FEEDS_BASE        = '/publisher/feeds';
+	private const HERO_BASE         = '/publisher/featured-hero';
+	private const MEDIA_BASE        = '/publisher/media/youtube-channels';
+	private const YT_SEARCH_BASE    = '/publisher/media/youtube-search';
+	private const NHC_BASE          = '/publisher/media/nhc-storms';
+	private const BLOG_BASE         = '/publisher/blog';
+	private const NODE_PROFILE_BASE = '/publisher/node-profile';
 
 	/**
 	 * URL-segment pattern for a dataset id (ULID or slug).
@@ -480,6 +481,45 @@ final class PublisherController {
 				'permission_callback' => array( $this, 'require_publish' ),
 			)
 		);
+
+		// Node profile — the host org's identity (name, mission, about, region,
+		// default tone, links, logo) that grounds generated drafts and brands the
+		// public blog. Operator-wide config the node restricts to admin/service, so
+		// the plugin gates the whole area at the configure tier (like Feeds). The
+		// literal `/logo` route is registered before nothing else could shadow it.
+		register_rest_route(
+			self::NAMESPACE,
+			self::NODE_PROFILE_BASE,
+			array(
+				array(
+					'methods'             => 'GET',
+					'callback'            => array( $this, 'get_node_profile' ),
+					'permission_callback' => array( $this, 'require_configure' ),
+				),
+				array(
+					'methods'             => 'PUT',
+					'callback'            => array( $this, 'set_node_profile' ),
+					'permission_callback' => array( $this, 'require_configure' ),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			self::NODE_PROFILE_BASE . '/logo',
+			array(
+				array(
+					'methods'             => 'POST',
+					'callback'            => array( $this, 'set_node_profile_logo' ),
+					'permission_callback' => array( $this, 'require_configure' ),
+				),
+				array(
+					'methods'             => 'DELETE',
+					'callback'            => array( $this, 'delete_node_profile_logo' ),
+					'permission_callback' => array( $this, 'require_configure' ),
+				),
+			)
+		);
 	}
 
 	/**
@@ -763,6 +803,82 @@ final class PublisherController {
 		}
 
 		return $this->respond( $client->clear_featured_hero() );
+	}
+
+	/**
+	 * GET the node's host-organization profile.
+	 *
+	 * @return WP_REST_Response
+	 */
+	public function get_node_profile(): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		return $this->respond( $client->get_node_profile() );
+	}
+
+	/**
+	 * PUT (upsert) the node profile. Only `orgName` is mandatory; the node returns
+	 * a `400 { errors }` field-error envelope for problems, passed through.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function set_node_profile( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		$body = $this->normalize_node_profile_body( (array) $request->get_json_params() );
+
+		return $this->respond( $client->set_node_profile( $body ) );
+	}
+
+	/**
+	 * POST upload the org logo (raster only, ≤512 KB — the node enforces both).
+	 * The base64 body is validated (real raster bytes, size-capped) before it's
+	 * forwarded.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function set_node_profile_logo( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		$body = $this->normalize_event_image_body( (array) $request->get_json_params() );
+		if ( isset( $body['error'] ) ) {
+			return new WP_REST_Response(
+				array(
+					'error'   => 'invalid_image',
+					'message' => (string) $body['error'],
+				),
+				400
+			);
+		}
+		// The logo endpoint takes only the bytes + type (no alt text).
+		unset( $body['altText'] );
+
+		return $this->respond( $client->set_node_profile_logo( $body ) );
+	}
+
+	/**
+	 * DELETE the org logo (clear it). Idempotent on the node.
+	 *
+	 * @return WP_REST_Response
+	 */
+	public function delete_node_profile_logo(): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		return $this->respond( $client->delete_node_profile_logo() );
 	}
 
 	/**
@@ -2277,6 +2393,60 @@ final class PublisherController {
 		// with no surprising coercion of 1/'1'/'true'.
 		if ( isset( $raw['includeTour'] ) && true === $raw['includeTour'] ) {
 			$out['includeTour'] = true;
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Reduce a caller-supplied node-profile body to the fields the node accepts:
+	 * the short single-line identity fields, the multi-line prose/markdown, and a
+	 * capped list of `{label, url}` links. Links are forwarded (allowlisted, not
+	 * silently dropped) so the node's per-link field errors surface to the form.
+	 * The node performs the authoritative validation (`orgName` required, lengths,
+	 * http(s) urls); this keeps the proxy from forwarding arbitrary JSON.
+	 *
+	 * @param array<string,mixed> $raw Decoded JSON body.
+	 * @return array<string,mixed>
+	 */
+	public function normalize_node_profile_body( array $raw ): array {
+		$out = array();
+
+		// Short single-line fields — collapsed + tag-stripped.
+		foreach ( array( 'orgName', 'regionFocus', 'defaultTone' ) as $key ) {
+			if ( isset( $raw[ $key ] ) && ( is_string( $raw[ $key ] ) || is_numeric( $raw[ $key ] ) ) ) {
+				$out[ $key ] = sanitize_text_field( (string) $raw[ $key ] );
+			}
+		}
+
+		// Multi-line free text — mission prose and the `aboutMd` markdown are
+		// preserved verbatim (trimmed only); the node validates length and
+		// sanitizes on render, so tag-stripping here would mangle valid markdown.
+		foreach ( array( 'mission', 'aboutMd' ) as $key ) {
+			if ( isset( $raw[ $key ] ) && ( is_string( $raw[ $key ] ) || is_numeric( $raw[ $key ] ) ) ) {
+				$out[ $key ] = trim( (string) $raw[ $key ] );
+			}
+		}
+
+		if ( isset( $raw['links'] ) && is_array( $raw['links'] ) ) {
+			$links = array();
+			foreach ( $raw['links'] as $link ) {
+				if ( ! is_array( $link ) ) {
+					continue;
+				}
+				$label   = ( isset( $link['label'] ) && ( is_string( $link['label'] ) || is_numeric( $link['label'] ) ) )
+					? sanitize_text_field( (string) $link['label'] ) : '';
+				$url     = ( isset( $link['url'] ) && ( is_string( $link['url'] ) || is_numeric( $link['url'] ) ) )
+					? esc_url_raw( trim( (string) $link['url'] ) ) : '';
+				$links[] = array(
+					'label' => $label,
+					'url'   => $url,
+				);
+				if ( count( $links ) >= 10 ) {
+					break;
+				}
+			}
+			$out['links'] = $links;
 		}
 
 		return $out;

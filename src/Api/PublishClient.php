@@ -496,6 +496,50 @@ final class PublishClient {
 	}
 
 	/**
+	 * `GET /api/v1/publish/node-profile` — the singleton host-organization
+	 * profile, or `{ profile: null }` when never filled in. Returns
+	 * `{ profile: { orgName, mission, aboutMd, regionFocus, defaultTone, links:[{label,url}], logoUrl } }`.
+	 *
+	 * @return array<string,mixed>
+	 */
+	public function get_node_profile(): array {
+		return $this->send( 'GET', '/api/v1/publish/node-profile' );
+	}
+
+	/**
+	 * `PUT /api/v1/publish/node-profile` — upsert the node profile. Only
+	 * `orgName` is mandatory; a `400 { errors }` field-error envelope is passed
+	 * through for validation problems.
+	 *
+	 * @param array<string,mixed> $body `{ orgName, mission?, aboutMd?, regionFocus?, defaultTone?, links? }`.
+	 * @return array<string,mixed>
+	 */
+	public function set_node_profile( array $body ): array {
+		return $this->send( 'PUT', '/api/v1/publish/node-profile', $body );
+	}
+
+	/**
+	 * `POST /api/v1/publish/node-profile/logo` — upload the org logo (raster
+	 * only, ≤512 KB; the node verifies the bytes and serves it publicly). Body
+	 * `{ contentType, dataBase64 }`; returns the profile with the new `logoUrl`.
+	 *
+	 * @param array<string,mixed> $body `{ contentType, dataBase64 }`.
+	 * @return array<string,mixed>
+	 */
+	public function set_node_profile_logo( array $body ): array {
+		return $this->send( 'POST', '/api/v1/publish/node-profile/logo', $body );
+	}
+
+	/**
+	 * `DELETE /api/v1/publish/node-profile/logo` — clear the org logo. Idempotent.
+	 *
+	 * @return array<string,mixed>
+	 */
+	public function delete_node_profile_logo(): array {
+		return $this->send( 'DELETE', '/api/v1/publish/node-profile/logo' );
+	}
+
+	/**
 	 * `GET /api/v1/featured-hero` — read the current "right now" hero override.
 	 *
 	 * This is the *public* read endpoint (the publish route exposes no
