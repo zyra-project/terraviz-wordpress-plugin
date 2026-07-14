@@ -251,7 +251,9 @@ export default function DraftWithAI( { onCancel } ) {
 					isBusy={ busy }
 					disabled={ busy }
 				>
-					{ __( 'Generate draft', 'terraviz' ) }
+					{ busy
+						? __( 'Generating…', 'terraviz' )
+						: __( 'Generate draft', 'terraviz' ) }
 				</Button>
 				<Button
 					variant="tertiary"
@@ -261,6 +263,15 @@ export default function DraftWithAI( { onCancel } ) {
 					{ __( 'Cancel', 'terraviz' ) }
 				</Button>
 			</div>
+
+			{ busy && (
+				<p style={ { color: '#646970', marginTop: '8px' } }>
+					{ __(
+						'Generating on the node — this can take up to a minute or two, especially for a long draft with a companion tour. Keep this tab open.',
+						'terraviz'
+					) }
+				</p>
+			) }
 		</div>
 	);
 }

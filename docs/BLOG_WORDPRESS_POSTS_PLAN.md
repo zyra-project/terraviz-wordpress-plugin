@@ -210,6 +210,12 @@ node post, it asks the node to *generate* one.
   `respond()` and the dashboard surfaces "the node may not have AI drafting
   enabled." Same `edit_posts` capability gate and credential/409 handling as the
   seed path.
+- **Timeout:** a Workers AI generation is slow — the node caps a draft at 30s
+  (short/medium) / 60s (long), plus a companion tour — so the generate call uses
+  a **100s** proxy timeout (not the default 10s) and the handler lifts PHP's
+  execution limit for the request; the form shows a "generating…" hint. The
+  heaviest combo (long + tour) is the slowest; medium without a tour is the
+  quickest to return.
 
 ---
 

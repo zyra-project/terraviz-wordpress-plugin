@@ -1163,6 +1163,14 @@ final class PublisherController {
 			);
 		}
 
+		// AI generation is slow (the node caps a draft at 30–60s, plus a companion
+		// tour), and the client waits up to 100s for it — so lift PHP's execution
+		// limit for this request or the script would be killed mid-wait. Scoped to
+		// this one call; best-effort (the function may be disabled).
+		if ( function_exists( 'set_time_limit' ) ) {
+			set_time_limit( 120 );
+		}
+
 		$result = $client->generate_blog_draft( $body );
 		if ( ! $result['ok'] ) {
 			// Surface the node's status + reason as-is (503 no-AI, 502 unusable,
