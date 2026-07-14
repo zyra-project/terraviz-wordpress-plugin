@@ -70,24 +70,34 @@ export default function NodeProfile() {
 		getNodeProfile()
 			.then( ( res ) => {
 				const p = res && res.profile;
-				if ( p ) {
-					setForm( {
-						orgName: p.orgName || '',
-						mission: p.mission || '',
-						aboutMd: p.aboutMd || '',
-						regionFocus: p.regionFocus || '',
-						defaultTone: p.defaultTone || '',
-					} );
-					setLinks(
-						Array.isArray( p.links )
-							? p.links.map( ( l ) => ( {
-									label: l.label || '',
-									url: l.url || '',
-							  } ) )
-							: []
-					);
-					setLogoUrl( p.logoUrl || '' );
+				if ( ! p ) {
+					// `{ profile: null }` — never filled in, or cleared upstream.
+					// Reset so a previously-loaded form doesn't go stale.
+					setForm( EMPTY );
+					setLinks( [] );
+					setLogoUrl( '' );
+					return;
 				}
+				setForm( {
+					orgName: p.orgName || '',
+					mission: p.mission || '',
+					aboutMd: p.aboutMd || '',
+					regionFocus: p.regionFocus || '',
+					defaultTone: p.defaultTone || '',
+				} );
+				// Coerce each link's fields to strings — a malformed entry must
+				// not yield non-strings that later break `.trim()` in save().
+				setLinks(
+					Array.isArray( p.links )
+						? p.links
+								.filter( ( l ) => l && typeof l === 'object' )
+								.map( ( l ) => ( {
+									label: String( l.label || '' ),
+									url: String( l.url || '' ),
+								} ) )
+						: []
+				);
+				setLogoUrl( p.logoUrl || '' );
 			} )
 			.catch( ( e ) =>
 				setNotice( {
@@ -374,6 +384,7 @@ export default function NodeProfile() {
 				<MarkdownField
 					value={ form.aboutMd }
 					onChange={ set( 'aboutMd' ) }
+					label={ __( 'About (Markdown)', 'terraviz' ) }
 					placeholder={ __(
 						'Tell readers who you are. Markdown supported.',
 						'terraviz'

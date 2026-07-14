@@ -2,9 +2,10 @@
  * A Markdown editor field (EasyMDE) for the node profile's About text.
  *
  * EasyMDE gives a friendlier, "a-little-WYSIWYG" surface than a raw textarea —
- * inline syntax styling, a formatting toolbar, keyboard shortcuts, and a live
- * side-by-side preview — while keeping **Markdown as the stored value** (the
- * node renders it and it grounds AI drafts, so we never convert to HTML).
+ * inline syntax styling, a formatting toolbar, keyboard shortcuts, and an inline
+ * (in-place, field-bounded) live preview — while keeping **Markdown as the
+ * stored value** (the node renders it and it grounds AI drafts, so we never
+ * convert to HTML).
  *
  * Self-contained on purpose:
  * - `autoDownloadFontAwesome: false` — EasyMDE otherwise fetches Font Awesome
@@ -91,8 +92,14 @@ function toolbar() {
  * @param {string}   props.value         Current Markdown value.
  * @param {Function} props.onChange      Called with the new Markdown on edit.
  * @param {string}   [props.placeholder] Placeholder text.
+ * @param {string}   [props.label]       Accessible name for the field.
  */
-export default function MarkdownField( { value, onChange, placeholder } ) {
+export default function MarkdownField( {
+	value,
+	onChange,
+	placeholder,
+	label,
+} ) {
 	const textareaRef = useRef( null );
 	const editorRef = useRef( null );
 	// Keep the latest onChange without re-initialising the editor.
@@ -138,7 +145,13 @@ export default function MarkdownField( { value, onChange, placeholder } ) {
 
 	return (
 		<div className="terraviz-markdown-field">
-			<textarea ref={ textareaRef } defaultValue={ value || '' } />
+			<textarea
+				ref={ textareaRef }
+				defaultValue={ value || '' }
+				aria-label={
+					label || placeholder || __( 'Markdown editor', 'terraviz' )
+				}
+			/>
 		</div>
 	);
 }
