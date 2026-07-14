@@ -14,6 +14,7 @@ import { useState, useEffect, useCallback } from '@wordpress/element';
 import { Button, Spinner, Notice, ExternalLink } from '@wordpress/components';
 import { listBlog, importBlogToWp, normalizeError } from './api';
 import { safeHttpUrl } from './safeUrl';
+import DraftWithAI from './DraftWithAI';
 
 const STATUSES = [ 'draft', 'published' ];
 
@@ -111,6 +112,7 @@ export default function Blog( { boot } ) {
 	const [ filter, setFilter ] = useState( '' );
 	const [ notice, setNotice ] = useState( null );
 	const [ busyId, setBusyId ] = useState( null );
+	const [ drafting, setDrafting ] = useState( false );
 
 	const refresh = useCallback( () => {
 		setLoading( true );
@@ -200,6 +202,13 @@ export default function Blog( { boot } ) {
 							{ __( 'Show all', 'terraviz' ) }
 						</Button>
 					) }
+					<Button
+						variant="secondary"
+						onClick={ () => setDrafting( ( on ) => ! on ) }
+						aria-expanded={ drafting }
+					>
+						{ __( 'Draft with AI', 'terraviz' ) }
+					</Button>
 					{ boot.newPostUrl && (
 						<Button variant="primary" href={ boot.newPostUrl }>
 							{ __( 'New post', 'terraviz' ) }
@@ -207,6 +216,10 @@ export default function Blog( { boot } ) {
 					) }
 				</div>
 			</div>
+
+			{ drafting && (
+				<DraftWithAI onCancel={ () => setDrafting( false ) } />
+			) }
 
 			{ notice && (
 				<Notice

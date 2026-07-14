@@ -178,6 +178,45 @@ draft opens fully illustrated:**
 Node media **suggestions** (suggested videos / images) are a distinct
 capability that belongs on the **Event review** screen, not here — see §9.
 
+### 4.6 Draft with AI (slice 4) — ✅ shipped
+
+A **"Draft with AI"** affordance in the dashboard Blog area lets an author
+generate a grounded first draft instead of starting from a blank post. It's the
+AI-assisted counterpart to §4.3's node→WP seed: rather than importing an existing
+node post, it asks the node to *generate* one.
+
+- **UI** (`blocks/admin/DraftWithAI.js`): pick datasets (a `FormTokenField` over
+  the publisher's published datasets), optionally a cited **approved event**, a
+  **tone** hint and a **length** (short/medium/long), and — when an event is
+  cited — an optional **companion tour**. Submitting hands the author into the WP
+  editor with the draft ready to edit.
+- **Contract:** `POST /api/v1/publish/blog/generate` (privileged) — body
+  `{ datasetIds, eventId?, tone?, length?, includeTour? }`, response
+  `{ draft:{ title, summary, bodyMd }, tour, tourError }`. One Workers AI call on
+  the **node** grounds the draft in the node profile + the cited event's own words
+  + the selected datasets' catalog metadata; it invents nothing beyond them. The
+  draft is **returned, not persisted** upstream.
+- **Plugin work:** `PublishClient::generate_blog_draft`; a publish-tier
+  `POST /publisher/blog/generate` route + `normalize_blog_generate_body`
+  (deduped/capped canonical dataset ids, `length` enum, bounded tone, strict
+  `includeTour`); the handler seeds a WP **draft** from the returned content using
+  the **same `markdown_to_blocks` + `embed_blocks` converter as slice 2**
+  (dataset embeds for the grounding, plus the companion-tour embed when one was
+  generated), sets `post_excerpt` from the summary, and opts the post into
+  Terraviz. There's **no node blog id to link** (the draft was never persisted),
+  so a subsequent WP publish creates the stub through the existing WP→node sync.
+- **Degradation:** generation *is* the feature, so the node fails loudly — no AI
+  binding is a typed `503` and an unusable model reply a `502`; both pass through
+  `respond()` and the dashboard surfaces "the node may not have AI drafting
+  enabled." Same `edit_posts` capability gate and credential/409 handling as the
+  seed path.
+- **Timeout:** a Workers AI generation is slow — the node caps a draft at 30s
+  (short/medium) / 60s (long), plus a companion tour — so the generate call uses
+  a **100s** proxy timeout (not the default 10s) and the handler lifts PHP's
+  execution limit for the request; the form shows a "generating…" hint. The
+  heaviest combo (long + tour) is the slowest; medium without a tour is the
+  quickest to return.
+
 ---
 
 ## 5. Tiers, security, degradation
@@ -225,9 +264,22 @@ capability that belongs on the **Event review** screen, not here — see §9.
    "Explore the data" heading / a live `terraviz/dataset` embed (author picks the
    dataset via the block's own typeahead) / a tip pointing at the opt-in panel.
    PHP-only, no build step. `src/Blog/Patterns.php`.
+4. ✅ **Draft with AI** — a "Draft with AI" affordance in the dashboard Blog area
+   (`blocks/admin/DraftWithAI.js`) that grounds an AI draft in the publisher's
+   selected datasets (+ an optional approved event, tone, length, optional
+   companion tour) via the node's `POST /publish/blog/generate`, then seeds a WP
+   **draft** from the returned `{ title, summary, bodyMd }` using the same
+   `markdown_to_blocks` + Terraviz-embed converter as slice 2 (with the companion
+   tour embedded when generated), opted into Terraviz. The AI runs on the **node**
+   (Workers AI); the plugin only proxies (`PublishClient::generate_blog_draft`,
+   publish-tier `POST /publisher/blog/generate` + `normalize_blog_generate_body`).
+   The node draft is *returned, not persisted*, so there's no node id to link — a
+   WP publish creates the stub through the existing sync. No AI on the node → the
+   typed `503` is surfaced as "AI drafting isn't enabled." See §4.6.
 
 Each slice is its own PR. Slice 1 is the deck-faithful list and is independently
-useful; slices 2–3 layer the node→WP authoring loop.
+useful; slices 2–4 layer the node→WP authoring loop (seed from a node post,
+scaffold a fresh post, and AI-draft a grounded post).
 
 ---
 

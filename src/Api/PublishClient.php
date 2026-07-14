@@ -274,6 +274,27 @@ final class PublishClient {
 	}
 
 	/**
+	 * `POST /api/v1/publish/blog/generate` — AI-draft a blog post grounded in the
+	 * caller's selected datasets (and an optional cited event), using the node's
+	 * Workers AI. The draft is **returned, not persisted** — the plugin seeds a
+	 * WordPress draft from it. Returns `200 { draft:{ title, summary, bodyMd },
+	 * tour, tourError }`; `503 ai_unavailable` when the node has no AI binding,
+	 * `502` on an unusable model reply, `400 no_datasets` when nothing grounds it.
+	 *
+	 * A single Workers AI generation on the node is slow — the node caps a draft
+	 * at 30s (short/medium) or 60s (long) and a companion tour adds more — so this
+	 * call uses a generous timeout well above the default, or the proxy would time
+	 * out long before the node answers.
+	 *
+	 * @param array<string,mixed> $body    `{ datasetIds:string[], eventId?, tone?, length?, includeTour? }`.
+	 * @param int                 $timeout Request timeout (seconds).
+	 * @return array<string,mixed>
+	 */
+	public function generate_blog_draft( array $body, int $timeout = 100 ): array {
+		return $this->send( 'POST', '/api/v1/publish/blog/generate', $body, $timeout );
+	}
+
+	/**
 	 * `POST /api/v1/publish/events` — propose a news event. The event is born
 	 * `proposed` and awaits a curator's approval on the node; there is no
 	 * `PUT`/`GET :id`/delete and no publish/unpublish toggle for the caller, so
@@ -516,11 +537,12 @@ final class PublishClient {
 	 * Perform a request and normalise the response.
 	 *
 	 * @param string                   $method HTTP method.
-	 * @param string                   $path   Path (with any query string) beginning with '/'.
-	 * @param array<string,mixed>|null $body   JSON body to send, or null for none.
+	 * @param string                   $path    Path (with any query string) beginning with '/'.
+	 * @param array<string,mixed>|null $body    JSON body to send, or null for none.
+	 * @param int|null                 $timeout Per-call timeout (seconds); defaults to the client's.
 	 * @return array{ok:bool,status:int,data:array<string,mixed>,error:string,message:string,errors:array<int,mixed>}
 	 */
-	private function send( string $method, string $path, ?array $body = null ): array {
+	private function send( string $method, string $path, ?array $body = null, ?int $timeout = null ): array {
 		$url = $this->origin . $path;
 
 		$headers = array_merge(
@@ -533,7 +555,7 @@ final class PublishClient {
 
 		$args = array(
 			'method'             => $method,
-			'timeout'            => $this->timeout,
+			'timeout'            => null !== $timeout ? max( 1, $timeout ) : $this->timeout,
 			'redirection'        => 2,
 			'reject_unsafe_urls' => true,
 			'headers'            => $headers,
