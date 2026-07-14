@@ -114,7 +114,7 @@ export const NAV = [
 				key: 'node-profile',
 				label: __( 'Node profile', 'terraviz' ),
 				tier: 'configure',
-				built: false,
+				built: true,
 			},
 			{
 				key: 'team',

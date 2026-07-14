@@ -357,6 +357,54 @@ export function clearFeaturedHero() {
 	return apiFetch( { url: heroUrl(), method: 'DELETE' } );
 }
 
+const nodeProfileUrl = () => `${ root }/node-profile`;
+
+/**
+ * Read the node's host-organization profile.
+ *
+ * @return {Promise<{profile: ?Object}>} `{ profile: {orgName, mission, aboutMd, regionFocus, defaultTone, links, logoUrl} | null }`.
+ */
+export function getNodeProfile() {
+	return apiFetch( { url: nodeProfileUrl() } );
+}
+
+/**
+ * Upsert the node profile. Only `orgName` is required; the node rejects bad
+ * bodies with a `{ errors:[{field,code,message}] }` envelope.
+ *
+ * @param {Object} data `{ orgName, mission?, aboutMd?, regionFocus?, defaultTone?, links? }`.
+ * @return {Promise<{profile: Object}>} The stored profile.
+ */
+export function setNodeProfile( data ) {
+	return apiFetch( { url: nodeProfileUrl(), method: 'PUT', data } );
+}
+
+/**
+ * Upload the org logo (raster only, ≤512 KB — enforced on the node).
+ *
+ * @param {Object} data `{ contentType, dataBase64 }`.
+ * @return {Promise<{profile: Object}>} The profile with the new `logoUrl`.
+ */
+export function setNodeProfileLogo( data ) {
+	return apiFetch( {
+		url: `${ nodeProfileUrl() }/logo`,
+		method: 'POST',
+		data,
+	} );
+}
+
+/**
+ * Clear the org logo. Idempotent.
+ *
+ * @return {Promise<Object>} The updated profile.
+ */
+export function deleteNodeProfileLogo() {
+	return apiFetch( {
+		url: `${ nodeProfileUrl() }/logo`,
+		method: 'DELETE',
+	} );
+}
+
 /**
  * Normalise an apiFetch rejection into `{ message, errors }`. apiFetch rejects
  * with the parsed JSON error body, so field-validation errors from the node

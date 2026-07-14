@@ -39,5 +39,8 @@
 		"@wordpress/scripts": "^30.0.0",
 		"pixelmatch": "^5.3.0",
 		"pngjs": "^7.0.0"
+	},
+	"dependencies": {
+		"easymde": "^2.21.0"
 	}
 }

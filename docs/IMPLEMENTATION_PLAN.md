@@ -332,8 +332,23 @@ located upstream:
 | **Tours CRUD** | `tours.ts`, `tours/[id]*.ts`, `tours/draft.ts` | full lifecycle (embed block already exists for read) |
 | **Import** | (bulk manifest) | CSV/JSON → drafts; remote-node + CLI paths are out of plugin scope |
 | **Workflows** | `workflows.ts`, `workflows/[id].ts`, `workflows/due.ts` | scheduled refresh pipelines |
-| **Node profile** | `node-profile.ts`, `node-profile/logo.ts` | org identity + logo |
+| **Node profile** | `node-profile.ts`, `node-profile/logo.ts` | ✅ **shipped** — org identity + logo |
 | **Team** | `publishers.ts` | ⚠️ **read-only / deferred** — clashes with the shared-`service` identity (Phase 2); the dashboard surfaces "acting as the shared publisher" rather than per-user management |
+
+> **Node profile (shipped).** The `Settings → Node profile` view
+> (`blocks/admin/NodeProfile.js`, configure-tier) edits the host org's identity —
+> name (required), mission, about (Markdown), region focus, default tone, up to
+> 10 `{label,url}` links, and a logo (raster ≤512 KB, upload/replace/remove). It
+> grounds AI-generated drafts and brands the public blog. The node is the
+> authoritative validator; its field-error envelope surfaces inline.
+> `PublishClient::{get,set}_node_profile` + `{set,delete}_node_profile_logo`,
+> `PublisherController` (`NODE_PROFILE_BASE` GET/PUT + `/logo` POST/DELETE routes,
+> `normalize_node_profile_body`; the logo has its own PNG/JPEG/WebP ≤512 KB
+> validator). The Sidebar item flips `built: true`. The **About** field uses an
+> **EasyMDE** Markdown editor (`blocks/admin/MarkdownField.js`) — toolbar + live
+> preview, keeping Markdown as the stored value; self-contained (no Font
+> Awesome/CDN — `autoDownloadFontAwesome: false`, toolbar rendered with wp-admin
+> Dashicons). Its CSS ships in `build/admin/index.css`, enqueued by the Dashboard.
 
 ---
 

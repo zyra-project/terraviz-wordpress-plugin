@@ -47,15 +47,16 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class PublisherController {
 
-	private const NAMESPACE      = 'terraviz/v1';
-	private const BASE           = '/publisher/datasets';
-	private const EVENTS_BASE    = '/publisher/events';
-	private const FEEDS_BASE     = '/publisher/feeds';
-	private const HERO_BASE      = '/publisher/featured-hero';
-	private const MEDIA_BASE     = '/publisher/media/youtube-channels';
-	private const YT_SEARCH_BASE = '/publisher/media/youtube-search';
-	private const NHC_BASE       = '/publisher/media/nhc-storms';
-	private const BLOG_BASE      = '/publisher/blog';
+	private const NAMESPACE         = 'terraviz/v1';
+	private const BASE              = '/publisher/datasets';
+	private const EVENTS_BASE       = '/publisher/events';
+	private const FEEDS_BASE        = '/publisher/feeds';
+	private const HERO_BASE         = '/publisher/featured-hero';
+	private const MEDIA_BASE        = '/publisher/media/youtube-channels';
+	private const YT_SEARCH_BASE    = '/publisher/media/youtube-search';
+	private const NHC_BASE          = '/publisher/media/nhc-storms';
+	private const BLOG_BASE         = '/publisher/blog';
+	private const NODE_PROFILE_BASE = '/publisher/node-profile';
 
 	/**
 	 * URL-segment pattern for a dataset id (ULID or slug).
@@ -80,6 +81,14 @@ final class PublisherController {
 	 * the node stores. Kept in sync with {@see self::sideload_image()}.
 	 */
 	private const EVENT_IMAGE_TYPES = array( 'image/jpeg', 'image/png', 'image/gif', 'image/webp' );
+
+	/**
+	 * Cap + accepted types for a node-profile logo — tighter than an event image
+	 * (the node stores raster png/jpeg/webp only, ≤512 KB; no GIF), so the proxy
+	 * rejects a disallowed logo locally instead of forwarding it.
+	 */
+	private const MAX_LOGO_BYTES = 524288;
+	private const LOGO_TYPES     = array( 'image/png', 'image/jpeg', 'image/webp' );
 
 	/**
 	 * Free-text / reference string fields accepted on a dataset body.
@@ -480,6 +489,45 @@ final class PublisherController {
 				'permission_callback' => array( $this, 'require_publish' ),
 			)
 		);
+
+		// Node profile — the host org's identity (name, mission, about, region,
+		// default tone, links, logo) that grounds generated drafts and brands the
+		// public blog. Operator-wide config the node restricts to admin/service, so
+		// the plugin gates the whole area at the configure tier (like Feeds). The
+		// logo lives on its own exact `/logo` route.
+		register_rest_route(
+			self::NAMESPACE,
+			self::NODE_PROFILE_BASE,
+			array(
+				array(
+					'methods'             => 'GET',
+					'callback'            => array( $this, 'get_node_profile' ),
+					'permission_callback' => array( $this, 'require_configure' ),
+				),
+				array(
+					'methods'             => 'PUT',
+					'callback'            => array( $this, 'set_node_profile' ),
+					'permission_callback' => array( $this, 'require_configure' ),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			self::NODE_PROFILE_BASE . '/logo',
+			array(
+				array(
+					'methods'             => 'POST',
+					'callback'            => array( $this, 'set_node_profile_logo' ),
+					'permission_callback' => array( $this, 'require_configure' ),
+				),
+				array(
+					'methods'             => 'DELETE',
+					'callback'            => array( $this, 'delete_node_profile_logo' ),
+					'permission_callback' => array( $this, 'require_configure' ),
+				),
+			)
+		);
 	}
 
 	/**
@@ -763,6 +811,82 @@ final class PublisherController {
 		}
 
 		return $this->respond( $client->clear_featured_hero() );
+	}
+
+	/**
+	 * GET the node's host-organization profile.
+	 *
+	 * @return WP_REST_Response
+	 */
+	public function get_node_profile(): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		return $this->respond( $client->get_node_profile() );
+	}
+
+	/**
+	 * PUT (upsert) the node profile. Only `orgName` is mandatory; the node returns
+	 * a `400 { errors }` field-error envelope for problems, passed through.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function set_node_profile( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		$body = $this->normalize_node_profile_body( (array) $request->get_json_params() );
+
+		return $this->respond( $client->set_node_profile( $body ) );
+	}
+
+	/**
+	 * POST upload the org logo (raster only, ≤512 KB — the node enforces both).
+	 * The base64 body is validated (real raster bytes, size-capped) before it's
+	 * forwarded.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function set_node_profile_logo( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		$body = $this->normalize_logo_body( (array) $request->get_json_params() );
+		if ( isset( $body['error'] ) ) {
+			return new WP_REST_Response(
+				array(
+					'error'   => 'invalid_image',
+					'message' => (string) $body['error'],
+				),
+				400
+			);
+		}
+		// The logo endpoint takes only the bytes + type (no alt text).
+		unset( $body['altText'] );
+
+		return $this->respond( $client->set_node_profile_logo( $body ) );
+	}
+
+	/**
+	 * DELETE the org logo (clear it). Idempotent on the node.
+	 *
+	 * @return WP_REST_Response
+	 */
+	public function delete_node_profile_logo(): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		return $this->respond( $client->delete_node_profile_logo() );
 	}
 
 	/**
@@ -2175,10 +2299,52 @@ final class PublisherController {
 	 * @return array<string,mixed>
 	 */
 	public function normalize_event_image_body( array $raw ): array {
+		return $this->validate_image_upload(
+			$raw,
+			self::EVENT_IMAGE_TYPES,
+			self::MAX_EVENT_IMAGE_BYTES,
+			__( 'Unsupported image type. Use JPEG, PNG, GIF, or WebP.', 'terraviz' ),
+			__( 'The image is too large (max 4 MB).', 'terraviz' )
+		);
+	}
+
+	/**
+	 * Validate a node-profile logo upload — the same magic-byte check as an event
+	 * image, but restricted to the node's logo rules (PNG/JPEG/WebP, ≤512 KB, no
+	 * GIF) so a disallowed logo is rejected here rather than forwarded.
+	 *
+	 * @param array<string,mixed> $raw Decoded JSON body.
+	 * @return array<string,mixed>
+	 */
+	public function normalize_logo_body( array $raw ): array {
+		return $this->validate_image_upload(
+			$raw,
+			self::LOGO_TYPES,
+			self::MAX_LOGO_BYTES,
+			__( 'Unsupported logo type. Use PNG, JPEG, or WebP.', 'terraviz' ),
+			__( 'The logo is too large (max 512 KB).', 'terraviz' )
+		);
+	}
+
+	/**
+	 * Validate a base64 image upload against a given type allowlist and size cap.
+	 * Returns the node-shaped body `{ contentType, dataBase64, altText? }` on
+	 * success, or `{ error }` describing the first failure. The forwarded
+	 * `contentType` is the type detected from the actual bytes (not the caller's
+	 * claim), so a mislabelled file can't set a wrong MIME.
+	 *
+	 * @param array<string,mixed> $raw           Decoded JSON body.
+	 * @param array<int,string>   $allowed_types Accepted MIME types.
+	 * @param int                 $max_bytes     Decoded-size cap.
+	 * @param string              $type_error    Message for a disallowed type.
+	 * @param string              $size_error    Message for an oversized upload.
+	 * @return array<string,mixed>
+	 */
+	private function validate_image_upload( array $raw, array $allowed_types, int $max_bytes, string $type_error, string $size_error ): array {
 		$claimed = ( isset( $raw['contentType'] ) && is_string( $raw['contentType'] ) )
 			? strtolower( trim( $raw['contentType'] ) ) : '';
-		if ( ! in_array( $claimed, self::EVENT_IMAGE_TYPES, true ) ) {
-			return array( 'error' => __( 'Unsupported image type. Use JPEG, PNG, GIF, or WebP.', 'terraviz' ) );
+		if ( ! in_array( $claimed, $allowed_types, true ) ) {
+			return array( 'error' => $type_error );
 		}
 
 		$data = ( isset( $raw['dataBase64'] ) && is_string( $raw['dataBase64'] ) ) ? $raw['dataBase64'] : '';
@@ -2190,16 +2356,16 @@ final class PublisherController {
 
 		// Preflight on the *encoded* length so an oversized payload is rejected
 		// before base64_decode allocates it — base64 is ~4/3 of the decoded size.
-		if ( strlen( $data ) > (int) ceil( self::MAX_EVENT_IMAGE_BYTES / 3 ) * 4 + 4 ) {
-			return array( 'error' => __( 'The image is too large (max 4 MB).', 'terraviz' ) );
+		if ( strlen( $data ) > (int) ceil( $max_bytes / 3 ) * 4 + 4 ) {
+			return array( 'error' => $size_error );
 		}
 
 		$decoded = base64_decode( $data, true ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- decoding an uploaded image to validate its real type/size before forwarding.
 		if ( false === $decoded || '' === $decoded ) {
 			return array( 'error' => __( 'The image data is not valid base64.', 'terraviz' ) );
 		}
-		if ( strlen( $decoded ) > self::MAX_EVENT_IMAGE_BYTES ) {
-			return array( 'error' => __( 'The image is too large (max 4 MB).', 'terraviz' ) );
+		if ( strlen( $decoded ) > $max_bytes ) {
+			return array( 'error' => $size_error );
 		}
 
 		// The bytes must really be a raster image of an accepted family, so a
@@ -2207,7 +2373,7 @@ final class PublisherController {
 		// than getimagesizefromstring(), which warns ("Read error!") on garbage
 		// input — a warning the WP test harness promotes to a failure.
 		$real_type = $this->sniff_image_mime( $decoded );
-		if ( ! in_array( $real_type, self::EVENT_IMAGE_TYPES, true ) ) {
+		if ( ! in_array( $real_type, $allowed_types, true ) ) {
 			return array( 'error' => __( 'The uploaded file is not a valid image.', 'terraviz' ) );
 		}
 
@@ -2277,6 +2443,60 @@ final class PublisherController {
 		// with no surprising coercion of 1/'1'/'true'.
 		if ( isset( $raw['includeTour'] ) && true === $raw['includeTour'] ) {
 			$out['includeTour'] = true;
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Reduce a caller-supplied node-profile body to the fields the node accepts:
+	 * the short single-line identity fields, the multi-line prose/markdown, and a
+	 * capped list of `{label, url}` links. Links are forwarded (allowlisted, not
+	 * silently dropped) so the node's per-link field errors surface to the form.
+	 * The node performs the authoritative validation (`orgName` required, lengths,
+	 * http(s) urls); this keeps the proxy from forwarding arbitrary JSON.
+	 *
+	 * @param array<string,mixed> $raw Decoded JSON body.
+	 * @return array<string,mixed>
+	 */
+	public function normalize_node_profile_body( array $raw ): array {
+		$out = array();
+
+		// Short single-line fields — collapsed + tag-stripped.
+		foreach ( array( 'orgName', 'regionFocus', 'defaultTone' ) as $key ) {
+			if ( isset( $raw[ $key ] ) && ( is_string( $raw[ $key ] ) || is_numeric( $raw[ $key ] ) ) ) {
+				$out[ $key ] = sanitize_text_field( (string) $raw[ $key ] );
+			}
+		}
+
+		// Multi-line free text — mission prose and the `aboutMd` markdown are
+		// preserved verbatim (trimmed only); the node validates length and
+		// sanitizes on render, so tag-stripping here would mangle valid markdown.
+		foreach ( array( 'mission', 'aboutMd' ) as $key ) {
+			if ( isset( $raw[ $key ] ) && ( is_string( $raw[ $key ] ) || is_numeric( $raw[ $key ] ) ) ) {
+				$out[ $key ] = trim( (string) $raw[ $key ] );
+			}
+		}
+
+		if ( isset( $raw['links'] ) && is_array( $raw['links'] ) ) {
+			$links = array();
+			foreach ( $raw['links'] as $link ) {
+				if ( ! is_array( $link ) ) {
+					continue;
+				}
+				$label   = ( isset( $link['label'] ) && ( is_string( $link['label'] ) || is_numeric( $link['label'] ) ) )
+					? sanitize_text_field( (string) $link['label'] ) : '';
+				$url     = ( isset( $link['url'] ) && ( is_string( $link['url'] ) || is_numeric( $link['url'] ) ) )
+					? esc_url_raw( trim( (string) $link['url'] ) ) : '';
+				$links[] = array(
+					'label' => $label,
+					'url'   => $url,
+				);
+				if ( count( $links ) >= 10 ) {
+					break;
+				}
+			}
+			$out['links'] = $links;
 		}
 
 		return $out;

@@ -1833,4 +1833,254 @@ class PublisherControllerTest extends WP_UnitTestCase {
 		$this->assertArrayNotHasKey( 'length', $capped );
 		$this->assertArrayNotHasKey( 'includeTour', $capped );
 	}
+
+	public function test_node_profile_routes_require_configure_tier(): void {
+		$admin  = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		$editor = self::factory()->user->create( array( 'role' => 'editor' ) );
+
+		// Node profile is operator-wide config the node restricts to admin/service,
+		// so a publish-tier editor is not enough.
+		wp_set_current_user( $admin );
+		$this->assertTrue( $this->controller->require_configure() );
+
+		wp_set_current_user( $editor );
+		$this->assertFalse( $this->controller->require_configure() );
+	}
+
+	public function test_get_node_profile_forwards_get(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['GET'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode( array( 'profile' => null ) ),
+		);
+
+		$response = $this->controller->get_node_profile();
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertStringEndsWith( '/api/v1/publish/node-profile', end( $this->sent_urls ) );
+	}
+
+	public function test_set_node_profile_forwards_put_with_normalized_body(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['PUT'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode( array( 'profile' => array( 'orgName' => 'NOAA Lab' ) ) ),
+		);
+
+		$request = new WP_REST_Request( 'PUT' );
+		$request->set_header( 'Content-Type', 'application/json' );
+		$request->set_body(
+			(string) wp_json_encode(
+				array(
+					'orgName'     => '  NOAA Lab  ',
+					'aboutMd'     => "## About\n\nWe **do** science.",
+					'defaultTone' => 'factual',
+					'links'       => array(
+						array(
+							'label' => 'Home',
+							'url'   => 'https://noaa.example',
+						),
+						'not-an-object',
+					),
+					'evil'        => 'DROP',
+				)
+			)
+		);
+		$response = $this->controller->set_node_profile( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertStringEndsWith( '/api/v1/publish/node-profile', end( $this->sent_urls ) );
+
+		$sent = json_decode( end( $this->sent_bodies ), true );
+		$this->assertSame( 'NOAA Lab', $sent['orgName'] );
+		// Markdown preserved verbatim (not tag-stripped).
+		$this->assertSame( "## About\n\nWe **do** science.", $sent['aboutMd'] );
+		$this->assertArrayNotHasKey( 'evil', $sent );
+		// The non-object link is dropped; the valid one is forwarded.
+		$this->assertSame(
+			array(
+				array(
+					'label' => 'Home',
+					'url'   => 'https://noaa.example',
+				),
+			),
+			$sent['links']
+		);
+	}
+
+	public function test_set_node_profile_logo_forwards_post_and_rejects_non_image(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['POST'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode( array( 'profile' => array( 'logoUrl' => 'https://node/logo.png' ) ) ),
+		);
+
+		// A real PNG uploads; the forwarded body carries only type + bytes.
+		$ok = new WP_REST_Request( 'POST' );
+		$ok->set_header( 'Content-Type', 'application/json' );
+		$ok->set_body(
+			(string) wp_json_encode(
+				array(
+					'contentType' => 'image/png',
+					'dataBase64'  => $this->png_base64(),
+				)
+			)
+		);
+		$response = $this->controller->set_node_profile_logo( $ok );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertStringEndsWith( '/api/v1/publish/node-profile/logo', end( $this->sent_urls ) );
+		$sent = json_decode( end( $this->sent_bodies ), true );
+		$this->assertSame( 'image/png', $sent['contentType'] );
+		$this->assertArrayNotHasKey( 'altText', $sent );
+
+		// Non-image bytes are rejected locally (400) and never forwarded.
+		$this->sent_methods = array();
+		$bad                = new WP_REST_Request( 'POST' );
+		$bad->set_header( 'Content-Type', 'application/json' );
+		$bad->set_body(
+			(string) wp_json_encode(
+				array(
+					'contentType' => 'image/png',
+					'dataBase64'  => base64_encode( 'not an image' ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+				)
+			)
+		);
+		$bad_response = $this->controller->set_node_profile_logo( $bad );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 400, $bad_response->get_status() );
+		$this->assertSame( 'invalid_image', $bad_response->get_data()['error'] );
+		$this->assertNotContains( 'POST', $this->sent_methods );
+	}
+
+	public function test_delete_node_profile_logo_forwards_delete(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['DELETE'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode( array( 'profile' => array( 'logoUrl' => null ) ) ),
+		);
+
+		$response = $this->controller->delete_node_profile_logo();
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertContains( 'DELETE', $this->sent_methods );
+		$this->assertStringEndsWith( '/api/v1/publish/node-profile/logo', end( $this->sent_urls ) );
+	}
+
+	public function test_node_profile_without_credential_returns_409(): void {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+
+		$this->assertSame( 409, $this->controller->get_node_profile()->get_status() );
+
+		$put = new WP_REST_Request( 'PUT' );
+		$put->set_header( 'Content-Type', 'application/json' );
+		$put->set_body( (string) wp_json_encode( array( 'orgName' => 'X' ) ) );
+		$this->assertSame( 409, $this->controller->set_node_profile( $put )->get_status() );
+
+		// Logo POST has its own entry point, so cover it too.
+		$logo = new WP_REST_Request( 'POST' );
+		$logo->set_header( 'Content-Type', 'application/json' );
+		$logo->set_body(
+			(string) wp_json_encode(
+				array(
+					'contentType' => 'image/png',
+					'dataBase64'  => $this->png_base64(),
+				)
+			)
+		);
+		$this->assertSame( 409, $this->controller->set_node_profile_logo( $logo )->get_status() );
+
+		$this->assertSame( 409, $this->controller->delete_node_profile_logo()->get_status() );
+	}
+
+	public function test_logo_rejects_gif_locally_without_forwarding(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		// GIF is allowed for an event image but NOT for a logo (png/jpeg/webp
+		// only), so the proxy rejects it locally rather than forwarding it.
+		$request = new WP_REST_Request( 'POST' );
+		$request->set_header( 'Content-Type', 'application/json' );
+		$request->set_body(
+			(string) wp_json_encode(
+				array(
+					'contentType' => 'image/gif',
+					'dataBase64'  => base64_encode( 'GIF89a' . str_repeat( 'x', 32 ) ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+				)
+			)
+		);
+		$response = $this->controller->set_node_profile_logo( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 400, $response->get_status() );
+		$this->assertSame( 'invalid_image', $response->get_data()['error'] );
+		$this->assertNotContains( 'POST', $this->sent_methods );
+
+		// The generic image normalizer still accepts a GIF (event images do).
+		$this->assertArrayNotHasKey(
+			'error',
+			$this->controller->normalize_event_image_body(
+				array(
+					'contentType' => 'image/gif',
+					'dataBase64'  => base64_encode( "GIF89a\x01\x00\x01\x00\x00\x00\x00" ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+				)
+			)
+		);
+	}
+
+	public function test_normalize_node_profile_body_allowlists_and_preserves_markdown(): void {
+		$out = $this->controller->normalize_node_profile_body(
+			array(
+				'orgName'     => '  NOAA  Lab ',
+				'regionFocus' => 'North Atlantic',
+				'defaultTone' => 'factual',
+				'mission'     => "Line1\nLine2",
+				'aboutMd'     => "## H\n\n**bold**",
+				'links'       => array(
+					array(
+						'label' => ' Home ',
+						'url'   => ' https://x.org ',
+					),
+					array(
+						'label' => 'Bad',
+						'url'   => 'javascript:alert(1)',
+					),
+				),
+				'stray'       => 1,
+			)
+		);
+
+		$this->assertSame( 'NOAA Lab', $out['orgName'] );
+		// Single-line fields collapse whitespace; multi-line prose/markdown is kept.
+		$this->assertSame( "Line1\nLine2", $out['mission'] );
+		$this->assertSame( "## H\n\n**bold**", $out['aboutMd'] );
+		$this->assertArrayNotHasKey( 'stray', $out );
+		// A valid link is trimmed; an unsafe URL is neutralized to '' (the node
+		// then field-errors it) rather than silently dropped.
+		$this->assertSame( 'Home', $out['links'][0]['label'] );
+		$this->assertSame( 'https://x.org', $out['links'][0]['url'] );
+		$this->assertSame( '', $out['links'][1]['url'] );
+	}
 }

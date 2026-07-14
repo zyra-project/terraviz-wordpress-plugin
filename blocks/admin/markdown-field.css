@@ -1,0 +1,32 @@
+/**
+ * Scoped tweaks for the EasyMDE Markdown field. Loaded after easymde.min.css so
+ * these win: force the toolbar buttons to render wp-admin Dashicons (EasyMDE's
+ * own button rules are more specific than the `.dashicons` class alone), and
+ * keep the editor sized to the admin form.
+ */
+.terraviz-markdown-field .editor-toolbar button.dashicons,
+.terraviz-markdown-field .editor-toolbar button.dashicons::before {
+	font-family: dashicons;
+	font-size: 18px;
+	line-height: 1.4;
+	width: auto;
+	min-width: 30px;
+	text-align: center;
+}
+
+.terraviz-markdown-field .CodeMirror,
+.terraviz-markdown-field .editor-preview,
+.terraviz-markdown-field .editor-preview-side {
+	font-size: 14px;
+}
+
+.terraviz-markdown-field .editor-toolbar {
+	border-top-left-radius: 3px;
+	border-top-right-radius: 3px;
+}
+
+/* Match the admin form's control border colour. */
+.terraviz-markdown-field .editor-toolbar,
+.terraviz-markdown-field .CodeMirror {
+	border-color: #949494;
+}
