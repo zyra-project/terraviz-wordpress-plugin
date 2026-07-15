@@ -327,7 +327,7 @@ located upstream:
 
 | Area | Upstream contract | Note |
 |---|---|---|
-| **Analytics** | `analytics.ts`, `analytics-export.ts` | ✅ **overview shipped** — sessions / view time / platform-OS mix / top countries; deeper sections deferred |
+| **Analytics** | `analytics.ts`, `analytics-export.ts` | ✅ **shipped** — all seven sections (Overview · Datasets · Spatial · Engagement · Performance · Orbit · Research) behind a sub-tab strip |
 | **Feedback** | `feedback.ts` | Orbit AI ratings + general feedback |
 | **Tours CRUD** | `tours.ts`, `tours/[id]*.ts`, `tours/draft.ts` | full lifecycle (embed block already exists for read) |
 | **Import** | (bulk manifest) | CSV/JSON → drafts; remote-node + CLI paths are out of plugin scope |
@@ -335,23 +335,42 @@ located upstream:
 | **Node profile** | `node-profile.ts`, `node-profile/logo.ts` | ✅ **shipped** — org identity + logo |
 | **Team** | `publishers.ts` | ⚠️ **read-only / deferred** — clashes with the shared-`service` identity (Phase 2); the dashboard surfaces "acting as the shared publisher" rather than per-user management |
 
-> **Analytics — overview (shipped).** The `Insights → Analytics` view
+> **Analytics (shipped).** The `Insights → Analytics` view
 > (`blocks/admin/Analytics.js`, publish-tier) is a read-only facade over the
-> node's typed rollup endpoint (`GET /publish/analytics?section=overview&…`): a
-> **range** (7/30/90/365 days) + **environment** (production/preview) filter over
-> stat tiles (sessions, view time, events, errors), a daily-sessions **sparkline**
-> (single series, hover crosshair), and single-hue horizontal-bar breakdowns for
-> **platforms**, **operating systems**, and **top countries** (one measure, one
-> hue — no categorical palette; each bar is direct-labelled so it doubles as its
-> own table). `PublishClient::get_analytics` + `PublisherController`
-> (`ANALYTICS_BASE` GET route, `normalize_analytics_query`: the query is reduced to
-> a fixed allowlist — section/days/environment plus the spatial refinements —
-> before forwarding; the node re-validates and is the authority). No CSV export:
-> `analytics-export.ts` is the node's **nightly ingestion cron tick** (Analytics
-> Engine → R2), not a user download, so the plugin does not surface it. The Sidebar
-> item flips `built: true`. Deeper sections (datasets, spatial, funnel, errors,
-> perf, orbit, research) reuse the same route with a different `section` and are
-> deferred.
+> node's typed rollup endpoint (`GET /publish/analytics?section=…`): a shared
+> **range** (7/30/90/365 days) + **environment** (production/preview) filter above
+> a **sub-tab strip** that mirrors the Terraviz app's analytics scenes —
+> **Overview · Datasets · Spatial · Engagement · Performance · Orbit · Research**
+> (the tab keys are the node's section names; "Engagement"/"Performance" are the
+> `funnel`/`perf` sections). Each section owns its fetch (`useSection`) and its
+> form, drawn from shared primitives in `blocks/admin/analytics/`
+> (`primitives.js` + `sections.js`):
+>   - **Overview** — stat tiles (sessions, view time, events, errors, errors/session),
+>     a daily-sessions sparkline, platform/OS/country bars, and a **View breakdown**
+>     drill-down into the `errors` section table.
+>   - **Datasets** — most-loaded bars + an engagement table (loads, trigger/source
+>     mix, load p50/p95, dwell).
+>   - **Spatial** — event/projection/layer filters over a **CSP-safe equirectangular
+>     density plot** (no external basemap — cells are opacity-weighted dots on a 30°
+>     graticule), a hit-kind breakdown, and a top-hotspots table.
+>   - **Engagement** (`funnel`) — tour/VR/orbit stat tiles, a tours-started
+>     sparkline, and outcome/source/XR-mode bars.
+>   - **Performance** (`perf`) — a per-surface/renderer table (samples, FPS, frame
+>     p95, JS heap).
+>   - **Orbit** — LLM turn/round/token tiles, a rounds sparkline, and a by-model table.
+>   - **Research** — top searches, zero-result searches, worst quiz questions, and
+>     longest-dwell tables.
+>
+> All marks are single-hue (one measure, one accent) so there's no categorical
+> palette to validate; bars are direct-labelled and tables carry the rest.
+> `PublishClient::get_analytics` + `PublisherController` (`ANALYTICS_BASE` GET
+> route, `normalize_analytics_query`: the query is reduced to a fixed allowlist —
+> section/days/environment plus the **spatial-only** `event`/`projection`/`layer`
+> refinements, forwarded only when `section=spatial`; the node re-validates and is
+> the authority). No CSV export: `analytics-export.ts` is the node's **nightly
+> ingestion cron tick** (Analytics Engine → R2, POST-only), not a user download —
+> the app's "Export CSV" is client-side, and the plugin does not surface it. The
+> Sidebar item flips `built: true`.
 >
 > **Node profile (shipped).** The `Settings → Node profile` view
 > (`blocks/admin/NodeProfile.js`, configure-tier) edits the host org's identity —
