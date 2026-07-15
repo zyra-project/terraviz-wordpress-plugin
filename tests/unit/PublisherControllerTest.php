@@ -2537,4 +2537,184 @@ class PublisherControllerTest extends WP_UnitTestCase {
 
 		$this->assertSame( array(), $this->controller->normalize_tour_body( array( 'stray' => 1 ) ) );
 	}
+
+	public function test_workflows_routes_require_configure_tier(): void {
+		$admin  = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		$editor = self::factory()->user->create( array( 'role' => 'editor' ) );
+
+		// Workflows run user-supplied execution config in the node's CI, so the
+		// node restricts them to admin/service — configure-tier, not publish.
+		wp_set_current_user( $admin );
+		$this->assertTrue( $this->controller->require_configure() );
+
+		wp_set_current_user( $editor );
+		$this->assertFalse( $this->controller->require_configure() );
+	}
+
+	public function test_list_workflows_forwards_get_with_limit(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['GET'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode( array( 'workflows' => array() ) ),
+		);
+
+		$request = new WP_REST_Request( 'GET' );
+		$request->set_param( 'limit', '10' );
+		$response = $this->controller->list_workflows( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertStringContainsString( '/api/v1/publish/workflows', end( $this->sent_urls ) );
+		$this->assertStringContainsString( 'limit=10', end( $this->sent_urls ) );
+	}
+
+	public function test_create_workflow_forwards_post_with_normalized_body(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['POST'] = array(
+			'response' => array( 'code' => 201 ),
+			'body'     => (string) wp_json_encode( array( 'workflow' => array( 'id' => 'W1' ) ) ),
+		);
+
+		$pipeline = '{"stages":[{"stage":"fetch","command":"fetch.http"}]}';
+		$request  = new WP_REST_Request( 'POST' );
+		$request->set_header( 'Content-Type', 'application/json' );
+		$request->set_body(
+			(string) wp_json_encode(
+				array(
+					'name'              => 'Nightly refresh',
+					'pipeline_json'     => $pipeline,
+					'metadata_template' => '{"title":"x"}',
+					'schedule'          => 'P1D',
+					'target_dataset_id' => 'DS1',
+					'enabled'           => 'true',
+					// Server-managed fields must be dropped.
+					'id'                => 'HACK',
+					'next_run_at'       => '2020-01-01',
+				)
+			)
+		);
+		$response = $this->controller->create_workflow( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 201, $response->get_status() );
+		$this->assertStringEndsWith( '/api/v1/publish/workflows', end( $this->sent_urls ) );
+
+		$sent = json_decode( end( $this->sent_bodies ), true );
+		// Opaque JSON strings are forwarded byte-for-byte.
+		$this->assertSame( $pipeline, $sent['pipeline_json'] );
+		$this->assertSame( '{"title":"x"}', $sent['metadata_template'] );
+		// A stringy boolean is coerced to a real bool.
+		$this->assertTrue( $sent['enabled'] );
+		$this->assertArrayNotHasKey( 'id', $sent );
+		$this->assertArrayNotHasKey( 'next_run_at', $sent );
+	}
+
+	public function test_update_workflow_forwards_patch(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['PATCH'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode( array( 'workflow' => array( 'id' => 'W1' ) ) ),
+		);
+
+		$request = new WP_REST_Request( 'PATCH' );
+		$request->set_param( 'id', 'W1' );
+		$request->set_header( 'Content-Type', 'application/json' );
+		$request->set_body( (string) wp_json_encode( array( 'enabled' => false ) ) );
+		$response = $this->controller->update_workflow( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( 'PATCH', end( $this->sent_methods ) );
+		$this->assertStringEndsWith( '/api/v1/publish/workflows/W1', end( $this->sent_urls ) );
+		$sent = json_decode( end( $this->sent_bodies ), true );
+		$this->assertFalse( $sent['enabled'] );
+	}
+
+	public function test_run_and_validate_and_runs_forward_to_subpaths(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['POST'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => '{"ok":true}',
+		);
+		$this->http_by_method['GET']  = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => '{"runs":[]}',
+		);
+
+		$run = new WP_REST_Request( 'POST' );
+		$run->set_param( 'id', 'W1' );
+		$this->controller->run_workflow( $run );
+		$this->assertStringEndsWith( '/api/v1/publish/workflows/W1/run', end( $this->sent_urls ) );
+
+		$val = new WP_REST_Request( 'POST' );
+		$val->set_param( 'id', 'W1' );
+		$val->set_header( 'Content-Type', 'application/json' );
+		$val->set_body( (string) wp_json_encode( array( 'name' => 'x' ) ) );
+		$this->controller->validate_workflow( $val );
+		$this->assertStringEndsWith( '/api/v1/publish/workflows/W1/validate', end( $this->sent_urls ) );
+
+		$runs = new WP_REST_Request( 'GET' );
+		$runs->set_param( 'id', 'W1' );
+		$this->controller->list_workflow_runs( $runs );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertStringEndsWith( '/api/v1/publish/workflows/W1/runs', end( $this->sent_urls ) );
+	}
+
+	public function test_workflow_without_credential_returns_409(): void {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		$this->assertSame( 409, $this->controller->list_workflows( new WP_REST_Request( 'GET' ) )->get_status() );
+		$this->assertSame( 409, $this->controller->create_workflow( new WP_REST_Request( 'POST' ) )->get_status() );
+		$run = new WP_REST_Request( 'POST' );
+		$run->set_param( 'id', 'W1' );
+		$this->assertSame( 409, $this->controller->run_workflow( $run )->get_status() );
+	}
+
+	public function test_normalize_workflow_body_allowlists_and_coerces(): void {
+		$out = $this->controller->normalize_workflow_body(
+			array(
+				'name'              => 'W',
+				'pipeline_json'     => '{"stages":[]}',
+				'metadata_template' => '{"a":"b"}',
+				'schedule'          => 'PT1H',
+				'target_dataset_id' => 'DS1',
+				'description'       => null,
+				'enabled'           => 1,
+				// Dropped — server-managed / unknown.
+				'id'                => 'x',
+				'created_at'        => 'y',
+				'stray'             => 'z',
+			)
+		);
+
+		$this->assertSame( 'W', $out['name'] );
+		$this->assertSame( '{"stages":[]}', $out['pipeline_json'] );
+		$this->assertSame( '{"a":"b"}', $out['metadata_template'] );
+		$this->assertSame( 'PT1H', $out['schedule'] );
+		$this->assertSame( 'DS1', $out['target_dataset_id'] );
+		$this->assertNull( $out['description'] );
+		$this->assertTrue( $out['enabled'] );
+		$this->assertArrayNotHasKey( 'id', $out );
+		$this->assertArrayNotHasKey( 'created_at', $out );
+		$this->assertArrayNotHasKey( 'stray', $out );
+
+		// An empty patch forwards nothing.
+		$this->assertSame( array(), $this->controller->normalize_workflow_body( array() ) );
+	}
 }

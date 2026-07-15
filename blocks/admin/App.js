@@ -29,6 +29,8 @@ import Analytics from './Analytics';
 import Feedback from './Feedback';
 import TourList from './TourList';
 import TourForm from './TourForm';
+import WorkflowList from './WorkflowList';
+import WorkflowForm from './WorkflowForm';
 import { deriveStatus } from './status';
 import {
 	listDatasets,
@@ -43,6 +45,9 @@ import {
 	publishTour,
 	retractTour,
 	deleteTour,
+	listWorkflows,
+	runWorkflow,
+	updateWorkflow,
 	normalizeError,
 } from './api';
 
@@ -442,6 +447,91 @@ function ToursSection( { boot } ) {
 	);
 }
 
+function WorkflowsSection() {
+	const [ view, setView ] = useState( 'list' );
+	const [ workflows, setWorkflows ] = useState( [] );
+	const [ loading, setLoading ] = useState( false );
+	const [ busyId, setBusyId ] = useState( null );
+	const [ notice, setNotice ] = useState( null );
+
+	const refresh = useCallback( () => {
+		setLoading( true );
+		listWorkflows()
+			.then( ( res ) =>
+				setWorkflows(
+					Array.isArray( res.workflows ) ? res.workflows : []
+				)
+			)
+			.catch( ( e ) =>
+				setNotice( {
+					type: 'error',
+					text: normalizeError( e ).message,
+				} )
+			)
+			.finally( () => setLoading( false ) );
+	}, [] );
+
+	useEffect( () => {
+		if ( view === 'list' ) {
+			refresh();
+		}
+	}, [ view, refresh ] );
+
+	const runAction = ( promise, id ) => {
+		setBusyId( id );
+		setNotice( null );
+		promise
+			.then( () => refresh() )
+			.catch( ( e ) =>
+				setNotice( {
+					type: 'error',
+					text: normalizeError( e ).message,
+				} )
+			)
+			.finally( () => setBusyId( null ) );
+	};
+
+	if ( view === 'create' || ( view && view.editId ) ) {
+		return (
+			<WorkflowForm
+				id={ view.editId || null }
+				onSaved={ ( workflow ) => {
+					// After creating a workflow, drop into its edit view — that's
+					// where Validate and the run-history / Run now panel live.
+					if ( view === 'create' && workflow && workflow.id ) {
+						setView( { editId: workflow.id } );
+					}
+				} }
+				onCancel={ () => setView( 'list' ) }
+			/>
+		);
+	}
+
+	return (
+		<div>
+			{ notice && (
+				<Notice
+					status={ notice.type }
+					onRemove={ () => setNotice( null ) }
+				>
+					{ notice.text }
+				</Notice>
+			) }
+			<WorkflowList
+				workflows={ workflows }
+				loading={ loading }
+				busyId={ busyId }
+				onNew={ () => setView( 'create' ) }
+				onEdit={ ( id ) => setView( { editId: id } ) }
+				onRun={ ( id ) => runAction( runWorkflow( id ), id ) }
+				onToggle={ ( id, enabled ) =>
+					runAction( updateWorkflow( id, { enabled } ), id )
+				}
+			/>
+		</div>
+	);
+}
+
 /**
  * The "coming soon" placeholder for a nav item that is on the roadmap but not
  * built yet. Keeps the IA complete without faking a feature.
@@ -626,6 +716,8 @@ export default function App( { boot } ) {
 				return <Feedback />;
 			case 'tours':
 				return <ToursSection boot={ boot } />;
+			case 'workflows':
+				return <WorkflowsSection />;
 			default:
 				return <ComingSoon sectionKey={ activeSection } />;
 		}

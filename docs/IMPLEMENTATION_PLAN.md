@@ -331,7 +331,7 @@ located upstream:
 | **Feedback** | `feedback.ts` | ✅ **shipped** — AI (Orbit thumbs) + General (bug/feature/other) review tabs, with a per-report screenshot drill-down |
 | **Tours CRUD** | `tours.ts`, `tours/[id]*.ts`, `tours/draft.ts` | ✅ **shipped (management)** — list + new-draft + metadata edit + publish/retract/delete; content authored in the Terraviz app |
 | **Import** | (bulk manifest) | CSV/JSON → drafts; remote-node + CLI paths are out of plugin scope |
-| **Workflows** | `workflows.ts`, `workflows/[id].ts`, `workflows/due.ts` | scheduled refresh pipelines |
+| **Workflows** | `workflows.ts`, `workflows/[id].ts`, `workflows/due.ts` | ✅ **shipped** — list/create/edit + enable/disable, Run now, dry-run Validate, and run history |
 | **Node profile** | `node-profile.ts`, `node-profile/logo.ts` | ✅ **shipped** — org identity + logo |
 | **Team** | `publishers.ts` | ⚠️ **read-only / deferred** — clashes with the shared-`service` identity (Phase 2); the dashboard surfaces "acting as the shared publisher" rather than per-user management |
 
@@ -410,6 +410,26 @@ located upstream:
 > description only** — node-managed fields like slug/refs/visibility are never
 > forwarded). The Sidebar item flips `built: true`. The node's tour authoring
 > surface (`/tours/{id}/{json,media,preview}`) stays app-side and isn't proxied.
+>
+> **Workflows (shipped).** The `Catalog → Workflows` view
+> (`blocks/admin/{WorkflowList,WorkflowForm,WorkflowRuns}.js`, **configure-tier** —
+> the node restricts the surface to admin/service because pipelines run
+> user-supplied execution config in its CI) manages scheduled dataset-refresh
+> pipelines: a list (name, cadence, target dataset, enabled, next/last run), a
+> create/edit form (name, description, target-dataset picker sourced from the
+> caller's catalog, cadence presets, enabled toggle, and the `pipeline_json` /
+> `metadata_template` JSON in monospace textareas with a client-side JSON
+> pre-check), inline **Enable/Disable**, **Run now**, a dry-run **Validate**
+> (`/validate`), and a **run-history** panel (`/runs`, status badges + GHA run id).
+> `PublishClient::{list,get,create,update,run,list_..._runs,validate}_workflow` +
+> `PublisherController` (`WORKFLOWS_BASE`: `GET`/`POST` collection, `GET`/`PATCH`
+> `{id}`, `POST {id}/run`, `GET {id}/runs`, `POST {id}/validate`;
+> `normalize_workflow_body` allowlists name/description/schedule/target_dataset_id/
+> enabled and forwards `pipeline_json` / `metadata_template` **verbatim** — the node
+> is the deep validator; server-managed fields are never forwarded). Update uses
+> **PATCH**; there is no delete (disable instead). The scheduler tick (`due.ts`) and
+> the runner status callback stay node-side and aren't proxied. The Sidebar item
+> flips `built: true`.
 >
 > **Node profile (shipped).** The `Settings → Node profile` view
 > (`blocks/admin/NodeProfile.js`, configure-tier) edits the host org's identity —

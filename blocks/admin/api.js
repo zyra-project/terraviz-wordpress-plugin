@@ -511,6 +511,71 @@ export function deleteTour( id ) {
 	return apiFetch( { url: tourUrl( id ), method: 'DELETE' } );
 }
 
+const workflowsUrl = () => `${ root }/workflows`;
+const workflowUrl = ( id ) =>
+	`${ workflowsUrl() }/${ encodeURIComponent( id ) }`;
+
+/**
+ * List refresh workflows (newest-updated first). The node returns them all in one
+ * shot up to the limit.
+ *
+ * @return {Promise<{workflows: Array}>} The workflows.
+ */
+export function listWorkflows() {
+	return apiFetch( { url: `${ workflowsUrl() }?limit=100` } );
+}
+
+export function getWorkflow( id ) {
+	return apiFetch( { url: workflowUrl( id ) } );
+}
+
+export function createWorkflow( data ) {
+	return apiFetch( { url: workflowsUrl(), method: 'POST', data } );
+}
+
+/**
+ * Partially update a workflow (also the enable/disable toggle). The node applies
+ * this as a PATCH.
+ *
+ * @param {string} id   Workflow id.
+ * @param {Object} data Fields to change.
+ * @return {Promise<{workflow: Object}>} The updated workflow.
+ */
+export function updateWorkflow( id, data ) {
+	return apiFetch( { url: workflowUrl( id ), method: 'PATCH', data } );
+}
+
+/**
+ * Queue a manual run ("Run now"). Rejects with `run_in_progress` (409) when an
+ * execution is already active.
+ *
+ * @param {string} id Workflow id.
+ * @return {Promise<{run: Object}>} The queued run.
+ */
+export function runWorkflow( id ) {
+	return apiFetch( { url: `${ workflowUrl( id ) }/run`, method: 'POST' } );
+}
+
+export function listWorkflowRuns( id ) {
+	return apiFetch( { url: `${ workflowUrl( id ) }/runs?limit=20` } );
+}
+
+/**
+ * Dry-run validate a candidate workflow body without saving. Resolves
+ * `{ ok: true }` or `{ ok: false, errors }`.
+ *
+ * @param {string} id   Workflow id (the row itself isn't read).
+ * @param {Object} data Candidate fields.
+ * @return {Promise<{ok: boolean, errors?: Array}>} The validation result.
+ */
+export function validateWorkflow( id, data ) {
+	return apiFetch( {
+		url: `${ workflowUrl( id ) }/validate`,
+		method: 'POST',
+		data,
+	} );
+}
+
 /**
  * Normalise an apiFetch rejection into `{ message, errors }`. apiFetch rejects
  * with the parsed JSON error body, so field-validation errors from the node

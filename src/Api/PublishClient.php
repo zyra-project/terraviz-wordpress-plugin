@@ -665,6 +665,92 @@ final class PublishClient {
 	}
 
 	/**
+	 * `GET /api/v1/publish/workflows` — list Zyra refresh workflows, newest-updated
+	 * first.
+	 *
+	 * @param array<string,scalar> $query Optional `limit`.
+	 * @return array<string,mixed>
+	 */
+	public function list_workflows( array $query = array() ): array {
+		$path = '/api/v1/publish/workflows';
+		if ( isset( $query['limit'] ) && '' !== (string) $query['limit'] ) {
+			$path = add_query_arg( 'limit', rawurlencode( (string) $query['limit'] ), $path );
+		}
+
+		return $this->send( 'GET', $path );
+	}
+
+	/**
+	 * `GET /api/v1/publish/workflows/:id` — fetch one workflow.
+	 *
+	 * @param string $id Workflow id.
+	 * @return array<string,mixed>
+	 */
+	public function get_workflow( string $id ): array {
+		return $this->send( 'GET', '/api/v1/publish/workflows/' . rawurlencode( $id ) );
+	}
+
+	/**
+	 * `POST /api/v1/publish/workflows` — create a workflow.
+	 *
+	 * @param array<string,mixed> $body Workflow fields.
+	 * @return array<string,mixed>
+	 */
+	public function create_workflow( array $body ): array {
+		return $this->send( 'POST', '/api/v1/publish/workflows', $body );
+	}
+
+	/**
+	 * `PATCH /api/v1/publish/workflows/:id` — partial update (also the
+	 * enable/disable toggle).
+	 *
+	 * @param string              $id   Workflow id.
+	 * @param array<string,mixed> $body Fields to change.
+	 * @return array<string,mixed>
+	 */
+	public function update_workflow( string $id, array $body ): array {
+		return $this->send( 'PATCH', '/api/v1/publish/workflows/' . rawurlencode( $id ), $body );
+	}
+
+	/**
+	 * `POST /api/v1/publish/workflows/:id/run` — queue a manual execution.
+	 *
+	 * @param string $id Workflow id.
+	 * @return array<string,mixed>
+	 */
+	public function run_workflow( string $id ): array {
+		return $this->send( 'POST', '/api/v1/publish/workflows/' . rawurlencode( $id ) . '/run', array() );
+	}
+
+	/**
+	 * `GET /api/v1/publish/workflows/:id/runs` — run history, newest first.
+	 *
+	 * @param string               $id    Workflow id.
+	 * @param array<string,scalar> $query Optional `limit`.
+	 * @return array<string,mixed>
+	 */
+	public function list_workflow_runs( string $id, array $query = array() ): array {
+		$path = '/api/v1/publish/workflows/' . rawurlencode( $id ) . '/runs';
+		if ( isset( $query['limit'] ) && '' !== (string) $query['limit'] ) {
+			$path = add_query_arg( 'limit', rawurlencode( (string) $query['limit'] ), $path );
+		}
+
+		return $this->send( 'GET', $path );
+	}
+
+	/**
+	 * `POST /api/v1/publish/workflows/:id/validate` — static dry-run of a candidate
+	 * body without persisting. Returns `{ ok: true }` or `{ ok: false, errors }`.
+	 *
+	 * @param string              $id   Workflow id (the row itself isn't read).
+	 * @param array<string,mixed> $body Candidate fields.
+	 * @return array<string,mixed>
+	 */
+	public function validate_workflow( string $id, array $body ): array {
+		return $this->send( 'POST', '/api/v1/publish/workflows/' . rawurlencode( $id ) . '/validate', $body );
+	}
+
+	/**
 	 * `GET /api/v1/featured-hero` — read the current "right now" hero override.
 	 *
 	 * This is the *public* read endpoint (the publish route exposes no
