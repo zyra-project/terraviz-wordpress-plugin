@@ -67,6 +67,21 @@ function tryParse( text ) {
 	}
 }
 
+/**
+ * Pretty-print JSON with 2-space indentation for the editor; unparseable text is
+ * returned unchanged so a work-in-progress edit isn't clobbered.
+ *
+ * @param {string} text JSON text.
+ * @return {string} Indented JSON, or the original text.
+ */
+function pretty( text ) {
+	try {
+		return JSON.stringify( JSON.parse( text ), null, 2 );
+	} catch {
+		return text;
+	}
+}
+
 export default function WorkflowForm( { id, onSaved, onCancel } ) {
 	const isEdit = Boolean( id );
 	const [ values, setValues ] = useState( BLANK );
@@ -111,8 +126,9 @@ export default function WorkflowForm( { id, onSaved, onCancel } ) {
 					target_dataset_id: w.target_dataset_id || '',
 					schedule: w.schedule || 'P1D',
 					enabled: !! w.enabled,
-					pipeline_json: w.pipeline_json || '',
-					metadata_template: w.metadata_template || '',
+					// The node stores minified JSON; indent it for the editor.
+					pipeline_json: pretty( w.pipeline_json || '' ),
+					metadata_template: pretty( w.metadata_template || '' ),
 				} );
 			} )
 			.catch(
@@ -247,6 +263,21 @@ export default function WorkflowForm( { id, onSaved, onCancel } ) {
 				setNotice( { type: 'error', text: n.message } );
 			} )
 			.finally( () => setSaving( false ) );
+	};
+
+	// Re-indent both JSON fields in place. Won't touch a field that doesn't parse
+	// — jsonOk() surfaces which one so the user can fix it first.
+	const handleFormat = () => {
+		setErrors( [] );
+		setNotice( null );
+		if ( ! jsonOk() ) {
+			return;
+		}
+		setValues( ( v ) => ( {
+			...v,
+			pipeline_json: pretty( v.pipeline_json ),
+			metadata_template: pretty( v.metadata_template ),
+		} ) );
 	};
 
 	if ( loading ) {
@@ -406,6 +437,13 @@ export default function WorkflowForm( { id, onSaved, onCancel } ) {
 					disabled={ saving }
 				>
 					{ __( 'Validate', 'terraviz' ) }
+				</Button>
+				<Button
+					variant="tertiary"
+					onClick={ handleFormat }
+					disabled={ saving }
+				>
+					{ __( 'Format JSON', 'terraviz' ) }
 				</Button>
 				<Button
 					variant="tertiary"
