@@ -60,6 +60,7 @@ final class PublisherController {
 	private const ANALYTICS_BASE    = '/publisher/analytics';
 	private const FEEDBACK_BASE     = '/publisher/feedback';
 	private const TOURS_BASE        = '/publisher/tours';
+	private const WORKFLOWS_BASE    = '/publisher/workflows';
 
 	/**
 	 * URL-segment pattern for a dataset id (ULID or slug).
@@ -637,6 +638,85 @@ final class PublisherController {
 				'permission_callback' => array( $this, 'require_publish' ),
 			)
 		);
+
+		// Workflows — scheduled dataset-refresh pipelines. The node restricts the
+		// whole surface to admin/service (it runs user-supplied execution config in
+		// the node's CI), so these are configure-tier, matching the nav item.
+		register_rest_route(
+			self::NAMESPACE,
+			self::WORKFLOWS_BASE,
+			array(
+				array(
+					'methods'             => 'GET',
+					'callback'            => array( $this, 'list_workflows' ),
+					'permission_callback' => array( $this, 'require_configure' ),
+					'args'                => array(
+						'limit' => array(
+							'type'     => 'integer',
+							'required' => false,
+						),
+					),
+				),
+				array(
+					'methods'             => 'POST',
+					'callback'            => array( $this, 'create_workflow' ),
+					'permission_callback' => array( $this, 'require_configure' ),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			self::WORKFLOWS_BASE . '/' . self::ID_PATTERN,
+			array(
+				array(
+					'methods'             => 'GET',
+					'callback'            => array( $this, 'get_workflow' ),
+					'permission_callback' => array( $this, 'require_configure' ),
+				),
+				array(
+					'methods'             => 'PATCH',
+					'callback'            => array( $this, 'update_workflow' ),
+					'permission_callback' => array( $this, 'require_configure' ),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			self::WORKFLOWS_BASE . '/' . self::ID_PATTERN . '/run',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'run_workflow' ),
+				'permission_callback' => array( $this, 'require_configure' ),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			self::WORKFLOWS_BASE . '/' . self::ID_PATTERN . '/runs',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'list_workflow_runs' ),
+				'permission_callback' => array( $this, 'require_configure' ),
+				'args'                => array(
+					'limit' => array(
+						'type'     => 'integer',
+						'required' => false,
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			self::WORKFLOWS_BASE . '/' . self::ID_PATTERN . '/validate',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'validate_workflow' ),
+				'permission_callback' => array( $this, 'require_configure' ),
+			)
+		);
 	}
 
 	/**
@@ -1149,6 +1229,129 @@ final class PublisherController {
 		}
 
 		return $this->respond( $client->delete_tour( (string) $request->get_param( 'id' ) ) );
+	}
+
+	/**
+	 * GET the workflow list.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function list_workflows( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		$query = array();
+		$limit = $request->get_param( 'limit' );
+		if ( null !== $limit && '' !== (string) $limit ) {
+			$query['limit'] = (string) $limit;
+		}
+
+		return $this->respond( $client->list_workflows( $query ) );
+	}
+
+	/**
+	 * POST a new workflow.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function create_workflow( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		return $this->respond( $client->create_workflow( $this->normalize_workflow_body( (array) $request->get_json_params() ) ) );
+	}
+
+	/**
+	 * GET one workflow.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function get_workflow( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		return $this->respond( $client->get_workflow( (string) $request->get_param( 'id' ) ) );
+	}
+
+	/**
+	 * PATCH a workflow (also the enable/disable toggle).
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function update_workflow( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		$id   = (string) $request->get_param( 'id' );
+		$body = $this->normalize_workflow_body( (array) $request->get_json_params() );
+
+		return $this->respond( $client->update_workflow( $id, $body ) );
+	}
+
+	/**
+	 * POST to queue a manual run.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function run_workflow( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		return $this->respond( $client->run_workflow( (string) $request->get_param( 'id' ) ) );
+	}
+
+	/**
+	 * GET a workflow's run history.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function list_workflow_runs( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		$query = array();
+		$limit = $request->get_param( 'limit' );
+		if ( null !== $limit && '' !== (string) $limit ) {
+			$query['limit'] = (string) $limit;
+		}
+
+		return $this->respond( $client->list_workflow_runs( (string) $request->get_param( 'id' ), $query ) );
+	}
+
+	/**
+	 * POST a dry-run validation of a candidate workflow body.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function validate_workflow( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		$id   = (string) $request->get_param( 'id' );
+		$body = $this->normalize_workflow_body( (array) $request->get_json_params() );
+
+		return $this->respond( $client->validate_workflow( $id, $body ) );
 	}
 
 	/**
@@ -2881,6 +3084,43 @@ final class PublisherController {
 			} elseif ( is_string( $raw['description'] ) || is_numeric( $raw['description'] ) ) {
 				$out['description'] = trim( (string) $raw['description'] );
 			}
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Reduce a workflow body to the node's allowlist. `pipeline_json` and
+	 * `metadata_template` are opaque JSON *strings* — forwarded verbatim (never
+	 * parsed or re-serialised here) so the node's deep validator sees exactly what
+	 * the author typed; `name` / `schedule` / `target_dataset_id` are strings,
+	 * `enabled` a boolean, `description` a string or null. The node validates every
+	 * field (pipeline shape, schedule range, dataset existence) and returns a
+	 * field-error envelope. Server-managed fields (id, timestamps, run state) are
+	 * never accepted.
+	 *
+	 * @param array<string,mixed> $raw Request body.
+	 * @return array<string,mixed>
+	 */
+	public function normalize_workflow_body( array $raw ): array {
+		$out = array();
+
+		foreach ( array( 'name', 'pipeline_json', 'metadata_template', 'schedule', 'target_dataset_id' ) as $key ) {
+			if ( isset( $raw[ $key ] ) && ( is_string( $raw[ $key ] ) || is_numeric( $raw[ $key ] ) ) ) {
+				$out[ $key ] = (string) $raw[ $key ];
+			}
+		}
+
+		if ( array_key_exists( 'description', $raw ) ) {
+			if ( null === $raw['description'] ) {
+				$out['description'] = null;
+			} elseif ( is_string( $raw['description'] ) || is_numeric( $raw['description'] ) ) {
+				$out['description'] = (string) $raw['description'];
+			}
+		}
+
+		if ( isset( $raw['enabled'] ) ) {
+			$out['enabled'] = filter_var( $raw['enabled'], FILTER_VALIDATE_BOOLEAN );
 		}
 
 		return $out;

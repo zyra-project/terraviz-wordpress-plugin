@@ -45,7 +45,7 @@ export const NAV = [
 				key: 'workflows',
 				label: __( 'Workflows', 'terraviz' ),
 				tier: 'configure',
-				built: false,
+				built: true,
 			},
 			{
 				key: 'import',
