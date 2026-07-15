@@ -514,6 +514,9 @@ export function useSection( section, query ) {
 		let cancelled = false;
 		setLoading( true );
 		setError( null );
+		// Drop the previous section's numbers so a filter change shows the
+		// spinner rather than briefly rendering stale data for the new filter.
+		setData( null );
 		getAnalytics( { section, ...JSON.parse( key ) } )
 			.then( ( res ) => {
 				if ( ! cancelled ) {

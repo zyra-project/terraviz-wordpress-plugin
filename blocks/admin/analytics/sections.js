@@ -5,7 +5,7 @@
  * shown. The node owns the numbers; these views just choose the form.
  */
 import { __ } from '@wordpress/i18n';
-import { useState } from '@wordpress/element';
+import { useState, useEffect } from '@wordpress/element';
 import { Button, SelectControl } from '@wordpress/components';
 import {
 	ACCENT,
@@ -352,126 +352,142 @@ export function SpatialSection( { days, environment } ) {
 	}
 	const { data, loading, error } = useSection( 'spatial', query );
 
+	// The layer list only comes back with the data, but the filter controls sit
+	// outside the load gate so they don't flash while a filter change refetches.
+	// Remember the last non-empty list so the dropdown survives the spinner.
+	const layersFromData = ( data && data.data && data.data.layers ) || null;
+	const [ knownLayers, setKnownLayers ] = useState( [] );
+	useEffect( () => {
+		if ( layersFromData && layersFromData.length ) {
+			setKnownLayers( layersFromData );
+		}
+	}, [ layersFromData ] );
+	const layerOptions = [
+		{ label: __( 'All layers', 'terraviz' ), value: '__all' },
+		...knownLayers
+			.filter( ( l ) => l.id )
+			.map( ( l ) => ( { label: l.title || l.id, value: l.id } ) ),
+	];
+
 	return (
-		<SectionState data={ data } loading={ loading } error={ error }>
-			{ ( d ) => {
-				const layerOptions = [
-					{ label: __( 'All layers', 'terraviz' ), value: '__all' },
-					...( d.layers || [] )
-						.filter( ( l ) => l.id )
-						.map( ( l ) => ( {
-							label: l.title || l.id,
-							value: l.id,
-						} ) ),
-				];
-				const bins = d.bins || [];
-				const drawn = bins.slice( 0, MAX_BINS_DRAWN );
-				const hotspots = [ ...bins ]
-					.sort( ( a, b ) => b.hits - a.hits )
-					.slice( 0, 12 );
-				return (
-					<div>
-						<div
-							style={ {
-								display: 'flex',
-								gap: '12px',
-								flexWrap: 'wrap',
-								alignItems: 'flex-end',
-							} }
-						>
-							<SelectControl
-								label={ __( 'Interaction', 'terraviz' ) }
-								value={ event }
-								options={ SPATIAL_EVENTS }
-								onChange={ setEvent }
-								__nextHasNoMarginBottom
-							/>
-							<SelectControl
-								label={ __( 'Projection', 'terraviz' ) }
-								value={ projection }
-								options={ PROJECTIONS }
-								onChange={ setProjection }
-								__nextHasNoMarginBottom
-							/>
-							<SelectControl
-								label={ __( 'Dataset layer', 'terraviz' ) }
-								value={ layer }
-								options={ layerOptions }
-								onChange={ setLayer }
-								__nextHasNoMarginBottom
-							/>
-						</div>
+		<div>
+			<div
+				style={ {
+					display: 'flex',
+					gap: '12px',
+					flexWrap: 'wrap',
+					alignItems: 'flex-end',
+				} }
+			>
+				<SelectControl
+					label={ __( 'Interaction', 'terraviz' ) }
+					value={ event }
+					options={ SPATIAL_EVENTS }
+					onChange={ setEvent }
+					__nextHasNoMarginBottom
+				/>
+				<SelectControl
+					label={ __( 'Projection', 'terraviz' ) }
+					value={ projection }
+					options={ PROJECTIONS }
+					onChange={ setProjection }
+					__nextHasNoMarginBottom
+				/>
+				<SelectControl
+					label={ __( 'Dataset layer', 'terraviz' ) }
+					value={ layer }
+					options={ layerOptions }
+					onChange={ setLayer }
+					__nextHasNoMarginBottom
+				/>
+			</div>
 
-						<Section
-							title={ __( 'Where people looked', 'terraviz' ) }
-						>
-							<DensityMap bins={ drawn } />
-							{ bins.length > MAX_BINS_DRAWN && (
-								<p
-									style={ {
-										color: MUTED,
-										fontSize: '12px',
-										margin: '6px 0 0',
-									} }
-								>
-									{ __(
-										'Showing the densest 8,000 cells.',
-										'terraviz'
-									) }
-								</p>
-							) }
-						</Section>
-
-						{ event === 'map_click' && (
+			<SectionState data={ data } loading={ loading } error={ error }>
+				{ ( d ) => {
+					const bins = d.bins || [];
+					const drawn = bins.slice( 0, MAX_BINS_DRAWN );
+					// The node already returns bins hits-descending, but sort the
+					// capped set defensively — it's ≤ MAX_BINS_DRAWN, not the full
+					// payload, and matches the "densest cells" copy below.
+					const hotspots = [ ...drawn ]
+						.sort( ( a, b ) => b.hits - a.hits )
+						.slice( 0, 12 );
+					return (
+						<div>
 							<Section
-								title={ __( 'Click targets', 'terraviz' ) }
+								title={ __(
+									'Where people looked',
+									'terraviz'
+								) }
 							>
-								<BarList
-									rows={ recRows( d.hitKinds ) }
+								<DensityMap bins={ drawn } />
+								{ bins.length > MAX_BINS_DRAWN && (
+									<p
+										style={ {
+											color: MUTED,
+											fontSize: '12px',
+											margin: '6px 0 0',
+										} }
+									>
+										{ __(
+											'Showing the densest 8,000 cells.',
+											'terraviz'
+										) }
+									</p>
+								) }
+							</Section>
+
+							{ event === 'map_click' && (
+								<Section
+									title={ __( 'Click targets', 'terraviz' ) }
+								>
+									<BarList
+										rows={ recRows( d.hitKinds ) }
+										empty={ __(
+											'No click data for this range.',
+											'terraviz'
+										) }
+									/>
+								</Section>
+							) }
+
+							<Section title={ __( 'Top hotspots', 'terraviz' ) }>
+								<Table
+									columns={ [
+										{
+											key: 'lat',
+											label: __( 'Lat', 'terraviz' ),
+											align: 'right',
+											render: ( r ) => r.lat.toFixed( 1 ),
+										},
+										{
+											key: 'lon',
+											label: __( 'Lon', 'terraviz' ),
+											align: 'right',
+											render: ( r ) => r.lon.toFixed( 1 ),
+										},
+										{
+											key: 'hits',
+											label: __( 'Hits', 'terraviz' ),
+											align: 'right',
+											render: ( r ) => num( r.hits ),
+										},
+									] }
+									rows={ hotspots.map( ( h, i ) => ( {
+										...h,
+										key: `${ h.lat }:${ h.lon }:${ i }`,
+									} ) ) }
 									empty={ __(
-										'No click data for this range.',
+										'No location data for this range.',
 										'terraviz'
 									) }
 								/>
 							</Section>
-						) }
-
-						<Section title={ __( 'Top hotspots', 'terraviz' ) }>
-							<Table
-								columns={ [
-									{
-										key: 'lat',
-										label: __( 'Lat', 'terraviz' ),
-										align: 'right',
-										render: ( r ) => r.lat.toFixed( 1 ),
-									},
-									{
-										key: 'lon',
-										label: __( 'Lon', 'terraviz' ),
-										align: 'right',
-										render: ( r ) => r.lon.toFixed( 1 ),
-									},
-									{
-										key: 'hits',
-										label: __( 'Hits', 'terraviz' ),
-										align: 'right',
-										render: ( r ) => num( r.hits ),
-									},
-								] }
-								rows={ hotspots.map( ( h, i ) => ( {
-									...h,
-									key: `${ h.lat }:${ h.lon }:${ i }`,
-								} ) ) }
-								empty={ __(
-									'No location data for this range.',
-									'terraviz'
-								) }
-							/>
-						</Section>
-					</div>
-				);
-			} }
-		</SectionState>
+						</div>
+					);
+				} }
+			</SectionState>
+		</div>
 	);
 }
 
