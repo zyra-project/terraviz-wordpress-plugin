@@ -3120,7 +3120,13 @@ final class PublisherController {
 		}
 
 		if ( isset( $raw['enabled'] ) ) {
-			$out['enabled'] = filter_var( $raw['enabled'], FILTER_VALIDATE_BOOLEAN );
+			// FILTER_NULL_ON_FAILURE so an unrecognized value (e.g. "maybe")
+			// drops out rather than coercing to false — which would silently
+			// disable the workflow instead of leaving `enabled` untouched.
+			$bool = filter_var( $raw['enabled'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE );
+			if ( null !== $bool ) {
+				$out['enabled'] = $bool;
+			}
 		}
 
 		return $out;

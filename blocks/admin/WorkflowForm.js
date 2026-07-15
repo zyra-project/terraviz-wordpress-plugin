@@ -218,7 +218,9 @@ export default function WorkflowForm( { id, onSaved, onCancel } ) {
 			return;
 		}
 		setSaving( true );
-		validateWorkflow( id, toBody() )
+		// The validate route needs an id path segment but never reads the row, so
+		// a placeholder works before the workflow exists (create mode).
+		validateWorkflow( id || 'new', toBody() )
 			.then( ( res ) => {
 				if ( res && res.ok ) {
 					setNotice( {
@@ -397,16 +399,14 @@ export default function WorkflowForm( { id, onSaved, onCancel } ) {
 						? __( 'Save changes', 'terraviz' )
 						: __( 'Create workflow', 'terraviz' ) }
 				</Button>
-				{ isEdit && (
-					<Button
-						variant="secondary"
-						onClick={ handleValidate }
-						isBusy={ saving }
-						disabled={ saving }
-					>
-						{ __( 'Validate', 'terraviz' ) }
-					</Button>
-				) }
+				<Button
+					variant="secondary"
+					onClick={ handleValidate }
+					isBusy={ saving }
+					disabled={ saving }
+				>
+					{ __( 'Validate', 'terraviz' ) }
+				</Button>
 				<Button
 					variant="tertiary"
 					onClick={ onCancel }
