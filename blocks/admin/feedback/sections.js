@@ -256,25 +256,27 @@ function RecentAi( { rows } ) {
 									style={ {
 										marginTop: '8px',
 										fontSize: '13px',
+										// The disclosure is opt-in, so show the
+										// whole exchange; preserve its line breaks
+										// and wrap long tokens rather than clip.
+										whiteSpace: 'pre-wrap',
+										wordBreak: 'break-word',
 									} }
 								>
 									{ r.user_message && (
 										<p style={ { margin: '0 0 6px' } }>
 											<strong>
-												{ __( 'User:', 'terraviz' ) }
+												{ __( 'User: ', 'terraviz' ) }
 											</strong>
-											{ truncate( r.user_message, 600 ) }
+											{ r.user_message }
 										</p>
 									) }
 									{ r.assistant_message && (
 										<p style={ { margin: 0 } }>
 											<strong>
-												{ __( 'Orbit:', 'terraviz' ) }
+												{ __( 'Orbit: ', 'terraviz' ) }
 											</strong>
-											{ truncate(
-												r.assistant_message,
-												600
-											) }
+											{ r.assistant_message }
 										</p>
 									) }
 								</div>
