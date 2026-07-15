@@ -26,6 +26,7 @@ import SubTabs from './SubTabs';
 import Blog from './Blog';
 import NodeProfile from './NodeProfile';
 import Analytics from './Analytics';
+import Feedback from './Feedback';
 import { deriveStatus } from './status';
 import {
 	listDatasets,
@@ -506,6 +507,8 @@ export default function App( { boot } ) {
 				return <NodeProfile />;
 			case 'analytics':
 				return <Analytics />;
+			case 'feedback':
+				return <Feedback />;
 			default:
 				return <ComingSoon sectionKey={ activeSection } />;
 		}

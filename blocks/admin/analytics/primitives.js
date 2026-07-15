@@ -496,28 +496,31 @@ export function MixText( { mix, top = 3 } ) {
 }
 
 /**
- * Fetch one analytics section and track load/error state. Re-fetches whenever the
- * range, environment, or any extra (spatial) filter changes.
+ * Fetch a keyed resource and track load/error state. `run(query)` performs the
+ * request; the hook re-runs it whenever any value in `query` changes (it keys on
+ * a JSON serialisation, so a fresh object identity each render doesn't refetch).
+ * The previous result is cleared at the start of each fetch, so a filter change
+ * shows the spinner rather than briefly rendering stale data.
  *
- * @param {string} section Section key.
- * @param {Object} query   `{ days, environment, ...extra }` forwarded to the node.
- * @return {{data: ?Object, loading: boolean, error: ?string}} The section envelope + state.
+ * `run` must depend only on its `query` argument — it's excluded from the effect
+ * deps so an inline `(q) => …` arrow doesn't retrigger on every render.
+ *
+ * @param {Function} run   `(query) => Promise` request runner.
+ * @param {Object}   query Serialisable request params.
+ * @return {{data: ?Object, loading: boolean, error: ?string}} The payload + state.
  */
-export function useSection( section, query ) {
+export function useResource( run, query ) {
 	const [ data, setData ] = useState( null );
 	const [ loading, setLoading ] = useState( true );
 	const [ error, setError ] = useState( null );
-	// Serialise the query so a new object identity each render doesn't refetch.
 	const key = JSON.stringify( query );
 
 	useEffect( () => {
 		let cancelled = false;
 		setLoading( true );
 		setError( null );
-		// Drop the previous section's numbers so a filter change shows the
-		// spinner rather than briefly rendering stale data for the new filter.
 		setData( null );
-		getAnalytics( { section, ...JSON.parse( key ) } )
+		run( JSON.parse( key ) )
 			.then( ( res ) => {
 				if ( ! cancelled ) {
 					setData( res || null );
@@ -537,9 +540,23 @@ export function useSection( section, query ) {
 		return () => {
 			cancelled = true;
 		};
-	}, [ section, key ] );
+		// `run` intentionally omitted — see the doc note; `key` captures the query.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [ key ] );
 
 	return { data, loading, error };
+}
+
+/**
+ * Fetch one analytics section. Thin wrapper over `useResource` that folds the
+ * section into the query so switching sections refetches.
+ *
+ * @param {string} section Section key.
+ * @param {Object} query   `{ days, environment, ...extra }` forwarded to the node.
+ * @return {{data: ?Object, loading: boolean, error: ?string}} The section envelope + state.
+ */
+export function useSection( section, query ) {
+	return useResource( ( q ) => getAnalytics( q ), { section, ...query } );
 }
 
 /**
