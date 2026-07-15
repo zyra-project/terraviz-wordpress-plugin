@@ -91,9 +91,14 @@ export default function TourForm( {
 		setSaving( true );
 		setErrors( [] );
 		setNotice( null );
-		// A new tour is a draft mint (title only); an edit patches metadata.
+		// A new tour is a draft mint (title only); an edit patches metadata. An
+		// emptied description is sent as null so the node clears it (the
+		// normalizer distinguishes null from a trimmed empty string).
 		const req = isEdit
-			? updateTour( id, { title, description } )
+			? updateTour( id, {
+					title,
+					description: description.trim() === '' ? null : description,
+			  } )
 			: createTourDraft( title ? { title } : {} );
 		req.then( ( res ) => {
 			const t = res.tour || res;

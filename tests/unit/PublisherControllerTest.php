@@ -2366,6 +2366,27 @@ class PublisherControllerTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'limit=25', end( $this->sent_urls ) );
 	}
 
+	public function test_get_tour_forwards_get_to_id_path(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['GET'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode( array( 'tour' => array( 'id' => 'T1' ) ) ),
+		);
+
+		$request = new WP_REST_Request( 'GET' );
+		$request->set_param( 'id', 'T1' );
+		$response = $this->controller->get_tour( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( 'GET', end( $this->sent_methods ) );
+		$this->assertStringEndsWith( '/api/v1/publish/tours/T1', end( $this->sent_urls ) );
+	}
+
 	public function test_create_tour_draft_forwards_post_with_normalized_title(): void {
 		$this->configure_credential();
 		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );

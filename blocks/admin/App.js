@@ -386,7 +386,14 @@ function ToursSection( { boot } ) {
 				id={ view.editId || null }
 				origin={ boot.origin }
 				canPublish={ !! boot.canPublish }
-				onSaved={ () => {} }
+				onSaved={ ( tour ) => {
+					// After minting a draft from the "New tour" view, switch to the
+					// edit view for it — that's where the description, publish, and
+					// "author in Terraviz" surface live.
+					if ( view === 'create' && tour && tour.id ) {
+						setView( { editId: tour.id } );
+					}
+				} }
 				onCancel={ () => setView( 'list' ) }
 			/>
 		);
