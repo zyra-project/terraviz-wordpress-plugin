@@ -266,16 +266,16 @@ function RecentAi( { rows } ) {
 									{ r.user_message && (
 										<p style={ { margin: '0 0 6px' } }>
 											<strong>
-												{ __( 'User: ', 'terraviz' ) }
-											</strong>
+												{ __( 'User:', 'terraviz' ) }
+											</strong>{ ' ' }
 											{ r.user_message }
 										</p>
 									) }
 									{ r.assistant_message && (
 										<p style={ { margin: 0 } }>
 											<strong>
-												{ __( 'Orbit: ', 'terraviz' ) }
-											</strong>
+												{ __( 'Orbit:', 'terraviz' ) }
+											</strong>{ ' ' }
 											{ r.assistant_message }
 										</p>
 									) }
