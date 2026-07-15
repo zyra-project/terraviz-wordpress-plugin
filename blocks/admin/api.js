@@ -423,6 +423,23 @@ export function getAnalytics( query ) {
 	return apiFetch( { url } );
 }
 
+const feedbackUrl = () => `${ root }/feedback`;
+
+/**
+ * Read a feedback review view. `view: 'ai'` / `'general'` return a dashboard
+ * envelope `{ view, days, data }` (totals + `byDay` + recent reports); `view:
+ * 'screenshot'` with an `id` returns `{ id, screenshot }` (a data URL). The PHP
+ * proxy allowlists the view and clamps the ranges before the node re-validates.
+ *
+ * @param {Object} query `{ view, days?, recent?, id? }`.
+ * @return {Promise<Object>} The view payload.
+ */
+export function getFeedback( query ) {
+	const qs = new URLSearchParams( query || {} ).toString();
+	const url = qs ? `${ feedbackUrl() }?${ qs }` : feedbackUrl();
+	return apiFetch( { url } );
+}
+
 /**
  * Normalise an apiFetch rejection into `{ message, errors }`. apiFetch rejects
  * with the parsed JSON error body, so field-validation errors from the node

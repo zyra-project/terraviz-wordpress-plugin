@@ -328,7 +328,7 @@ located upstream:
 | Area | Upstream contract | Note |
 |---|---|---|
 | **Analytics** | `analytics.ts`, `analytics-export.ts` | ✅ **shipped** — all seven sections (Overview · Datasets · Spatial · Engagement · Performance · Orbit · Research) behind a sub-tab strip |
-| **Feedback** | `feedback.ts` | Orbit AI ratings + general feedback |
+| **Feedback** | `feedback.ts` | ✅ **shipped** — AI (Orbit thumbs) + General (bug/feature/other) review tabs, with a per-report screenshot drill-down |
 | **Tours CRUD** | `tours.ts`, `tours/[id]*.ts`, `tours/draft.ts` | full lifecycle (embed block already exists for read) |
 | **Import** | (bulk manifest) | CSV/JSON → drafts; remote-node + CLI paths are out of plugin scope |
 | **Workflows** | `workflows.ts`, `workflows/[id].ts`, `workflows/due.ts` | scheduled refresh pipelines |
@@ -371,6 +371,29 @@ located upstream:
 > ingestion cron tick** (Analytics Engine → R2, POST-only), not a user download —
 > the app's "Export CSV" is client-side, and the plugin does not surface it. The
 > Sidebar item flips `built: true`.
+>
+> **Feedback (shipped).** The `Insights → Feedback` view (`blocks/admin/Feedback.js`,
+> publish-tier) is a read-only facade over the node's privilege-gated feedback
+> endpoint (`GET /publish/feedback?view=…`), split into two sub-tabs over a shared
+> range filter:
+>   - **AI feedback** (`view=ai`) — Orbit thumbs: total/up/down/satisfaction tiles,
+>     up- and down-daily sparklines, a top-tags bar list, and a recent-feedback
+>     list where each card reveals the user/Orbit conversation behind a native
+>     disclosure.
+>   - **General feedback** (`view=general`) — bug/feature/other: total + per-kind
+>     tiles, a daily-volume sparkline, and a recent-reports table (kind, message,
+>     platform, page link, and a **screenshot** cell). The list response omits the
+>     image bytes; clicking **View** fetches the screenshot on demand
+>     (`view=screenshot&id=N`) into a modal.
+>
+> `PublishClient::get_feedback` + `PublisherController` (`FEEDBACK_BASE` GET route,
+> `normalize_feedback_query`: the `view` enum, the clamped `days` (1–365) / `recent`
+> (1–200) ranges, and a positive `id` — nothing else is forwarded; the node
+> re-validates). The two sections reuse the shared analytics primitives
+> (`blocks/admin/analytics/primitives.js`, whose fetch hook was generalised to
+> `useResource`). No bulk export: the node keeps CSV/JSONL on its machine endpoint
+> with a bearer-token fallback, so the plugin does not surface it. The Sidebar item
+> flips `built: true`.
 >
 > **Node profile (shipped).** The `Settings → Node profile` view
 > (`blocks/admin/NodeProfile.js`, configure-tier) edits the host org's identity —

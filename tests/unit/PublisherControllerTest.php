@@ -2206,4 +2206,125 @@ class PublisherControllerTest extends WP_UnitTestCase {
 			$non_spatial
 		);
 	}
+
+	public function test_feedback_route_requires_publish_tier(): void {
+		$editor      = self::factory()->user->create( array( 'role' => 'editor' ) );
+		$contributor = self::factory()->user->create( array( 'role' => 'contributor' ) );
+
+		wp_set_current_user( $editor );
+		$this->assertTrue( $this->controller->require_publish() );
+
+		wp_set_current_user( $contributor );
+		$this->assertFalse( $this->controller->require_publish() );
+	}
+
+	public function test_get_feedback_forwards_get_with_allowlisted_query(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['GET'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode(
+				array(
+					'view' => 'ai',
+					'days' => 30,
+					'data' => array( 'totalCount' => 5 ),
+				)
+			),
+		);
+
+		$request = new WP_REST_Request( 'GET' );
+		$request->set_query_params(
+			array(
+				'view'   => 'ai',
+				'days'   => '30',
+				'recent' => '100',
+				// Not allowlisted — must be dropped, not forwarded.
+				'sql'    => 'DROP TABLE',
+			)
+		);
+		$response = $this->controller->get_feedback( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+
+		$url = end( $this->sent_urls );
+		$this->assertStringContainsString( '/api/v1/publish/feedback?', $url );
+		$this->assertStringContainsString( 'view=ai', $url );
+		$this->assertStringContainsString( 'days=30', $url );
+		$this->assertStringContainsString( 'recent=100', $url );
+		$this->assertStringNotContainsString( 'sql=', $url );
+		$this->assertStringNotContainsString( 'DROP', $url );
+	}
+
+	public function test_get_feedback_without_credential_returns_409(): void {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		$response = $this->controller->get_feedback( new WP_REST_Request( 'GET' ) );
+		$this->assertSame( 409, $response->get_status() );
+		$this->assertSame( 'credential_missing', $response->get_data()['error'] );
+	}
+
+	public function test_normalize_feedback_query_allowlists_and_clamps(): void {
+		// A valid AI dashboard query passes through; junk is dropped.
+		$ai = $this->controller->normalize_feedback_query(
+			array(
+				'view'   => 'ai',
+				'days'   => '30',
+				'recent' => '100',
+				'stray'  => 'x',
+			)
+		);
+		$this->assertSame(
+			array(
+				'view'   => 'ai',
+				'days'   => 30,
+				'recent' => 100,
+			),
+			$ai
+		);
+
+		// Out-of-range days/recent clamp to their bounds (tolerant ranges, not
+		// enums), and a screenshot id is coerced to a positive int.
+		$shot = $this->controller->normalize_feedback_query(
+			array(
+				'view'   => 'screenshot',
+				'id'     => '42',
+				'days'   => '9999',
+				'recent' => '0',
+			)
+		);
+		$this->assertSame( 'screenshot', $shot['view'] );
+		$this->assertSame( 42, $shot['id'] );
+		$this->assertSame( 365, $shot['days'] );
+		$this->assertSame( 1, $shot['recent'] );
+
+		// A bad view, a non-positive id, and non-numeric ranges are all dropped.
+		$bad = $this->controller->normalize_feedback_query(
+			array(
+				'view' => 'sql',
+				'id'   => '-3',
+				'days' => 'abc',
+			)
+		);
+		$this->assertSame( array(), $bad );
+
+		// Without a valid view, nothing rides along — not even a well-formed range.
+		$this->assertSame(
+			array(),
+			$this->controller->normalize_feedback_query( array( 'days' => '30' ) )
+		);
+
+		// `id` is forwarded only for the screenshot view; a dashboard view drops it.
+		$this->assertSame(
+			array( 'view' => 'ai' ),
+			$this->controller->normalize_feedback_query(
+				array(
+					'view' => 'ai',
+					'id'   => '42',
+				)
+			)
+		);
+	}
 }

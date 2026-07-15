@@ -58,6 +58,7 @@ final class PublisherController {
 	private const BLOG_BASE         = '/publisher/blog';
 	private const NODE_PROFILE_BASE = '/publisher/node-profile';
 	private const ANALYTICS_BASE    = '/publisher/analytics';
+	private const FEEDBACK_BASE     = '/publisher/feedback';
 
 	/**
 	 * URL-segment pattern for a dataset id (ULID or slug).
@@ -542,6 +543,19 @@ final class PublisherController {
 				'permission_callback' => array( $this, 'require_publish' ),
 			)
 		);
+
+		// Feedback — the read-only review facade for AI (thumbs) and general
+		// (bug/feature/other) reports, plus a per-report screenshot fetch. Same
+		// Insights tier as analytics; the node re-gates and clamps every param.
+		register_rest_route(
+			self::NAMESPACE,
+			self::FEEDBACK_BASE,
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_feedback' ),
+				'permission_callback' => array( $this, 'require_publish' ),
+			)
+		);
 	}
 
 	/**
@@ -918,6 +932,24 @@ final class PublisherController {
 		}
 
 		return $this->respond( $client->get_analytics( $this->normalize_analytics_query( $request->get_query_params() ) ) );
+	}
+
+	/**
+	 * GET a feedback review view (`ai` / `general` dashboard, or one report's
+	 * `screenshot`). The query is reduced to an allowlist — the view enum, the
+	 * clamped `days` / `recent` ranges, and a positive `id` for a screenshot —
+	 * before forwarding; the node re-validates and is the authority.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function get_feedback( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		return $this->respond( $client->get_feedback( $this->normalize_feedback_query( $request->get_query_params() ) ) );
 	}
 
 	/**
@@ -2578,6 +2610,49 @@ final class PublisherController {
 		// Drop the spatial-only refinements for every other section.
 		if ( ! $is_spatial ) {
 			unset( $out['event'], $out['projection'] );
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Reduce a feedback-review query to the node's allowlist. A valid `view`
+	 * (`ai`/`general`/`screenshot`) is required — without it nothing is forwarded,
+	 * so a stray `days`/`id` can't ride an invalid request. Then: numeric `days`
+	 * (1–365) and `recent` (1–200) are clamped to their bounds and non-numeric
+	 * values are dropped (tolerant ranges, not enums); a positive integer `id` is
+	 * forwarded only for the screenshot view. The node re-validates and is the
+	 * authority.
+	 *
+	 * @param array<string,mixed> $raw Request query params.
+	 * @return array<string,int|string>
+	 */
+	public function normalize_feedback_query( array $raw ): array {
+		if ( ! isset( $raw['view'] ) || ! ( is_string( $raw['view'] ) || is_numeric( $raw['view'] ) )
+			|| ! in_array( (string) $raw['view'], array( 'ai', 'general', 'screenshot' ), true )
+		) {
+			return array();
+		}
+		$view = (string) $raw['view'];
+		$out  = array( 'view' => $view );
+
+		$ranges = array(
+			'days'   => array( 1, 365 ),
+			'recent' => array( 1, 200 ),
+		);
+		foreach ( $ranges as $key => $bounds ) {
+			if ( isset( $raw[ $key ] ) && is_numeric( $raw[ $key ] ) ) {
+				$out[ $key ] = max( $bounds[0], min( $bounds[1], (int) $raw[ $key ] ) );
+			}
+		}
+
+		// A general_feedback row id, for the screenshot fetch only. Positive
+		// integers only — a zero/negative id would address no record.
+		if ( 'screenshot' === $view && isset( $raw['id'] ) && is_numeric( $raw['id'] ) ) {
+			$id = (int) $raw['id'];
+			if ( $id >= 1 ) {
+				$out['id'] = $id;
+			}
 		}
 
 		return $out;

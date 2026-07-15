@@ -560,6 +560,26 @@ final class PublishClient {
 	}
 
 	/**
+	 * `GET /api/v1/publish/feedback?view=&days=&recent=…` — the privilege-gated
+	 * feedback review facade (the node validates the view against an allowlist and
+	 * clamps the ranges). Views: `ai` (thumbs dashboard), `general` (bug/feature/
+	 * other dashboard), `screenshot` (one report's screenshot data URL by `id`).
+	 * Returns `{ view, days, data }` for the dashboards, or `{ id, screenshot }`
+	 * for a screenshot.
+	 *
+	 * @param array<string,int|string> $query Allowlisted query params.
+	 * @return array<string,mixed>
+	 */
+	public function get_feedback( array $query ): array {
+		$path = '/api/v1/publish/feedback';
+		if ( ! empty( $query ) ) {
+			$path .= '?' . http_build_query( $query );
+		}
+
+		return $this->send( 'GET', $path );
+	}
+
+	/**
 	 * `GET /api/v1/featured-hero` — read the current "right now" hero override.
 	 *
 	 * This is the *public* read endpoint (the publish route exposes no
