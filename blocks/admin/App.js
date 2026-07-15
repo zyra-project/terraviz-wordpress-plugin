@@ -27,6 +27,8 @@ import Blog from './Blog';
 import NodeProfile from './NodeProfile';
 import Analytics from './Analytics';
 import Feedback from './Feedback';
+import TourList from './TourList';
+import TourForm from './TourForm';
 import { deriveStatus } from './status';
 import {
 	listDatasets,
@@ -37,6 +39,10 @@ import {
 	listFeeds,
 	updateFeed,
 	deleteFeed,
+	listTours,
+	publishTour,
+	retractTour,
+	deleteTour,
 	normalizeError,
 } from './api';
 
@@ -327,6 +333,108 @@ function FeedsSection() {
 	);
 }
 
+function ToursSection( { boot } ) {
+	const [ view, setView ] = useState( 'list' );
+	const [ filter, setFilter ] = useState( '' );
+	const [ tours, setTours ] = useState( [] );
+	const [ loading, setLoading ] = useState( false );
+	const [ busyId, setBusyId ] = useState( null );
+	const [ notice, setNotice ] = useState( null );
+
+	const refresh = useCallback( () => {
+		setLoading( true );
+		listTours()
+			.then( ( res ) =>
+				setTours( Array.isArray( res.tours ) ? res.tours : [] )
+			)
+			.catch( ( e ) =>
+				setNotice( {
+					type: 'error',
+					text: normalizeError( e ).message,
+				} )
+			)
+			.finally( () => setLoading( false ) );
+	}, [] );
+
+	useEffect( () => {
+		if ( view === 'list' ) {
+			refresh();
+		}
+	}, [ view, refresh ] );
+
+	const runAction = ( fn, id, confirmText ) => {
+		// eslint-disable-next-line no-alert -- a native confirm is acceptable for a destructive wp-admin action.
+		if ( confirmText && ! window.confirm( confirmText ) ) {
+			return;
+		}
+		setBusyId( id );
+		setNotice( null );
+		fn( id )
+			.then( () => refresh() )
+			.catch( ( e ) =>
+				setNotice( {
+					type: 'error',
+					text: normalizeError( e ).message,
+				} )
+			)
+			.finally( () => setBusyId( null ) );
+	};
+
+	if ( view === 'create' || ( view && view.editId ) ) {
+		return (
+			<TourForm
+				id={ view.editId || null }
+				origin={ boot.origin }
+				canPublish={ !! boot.canPublish }
+				onSaved={ () => {} }
+				onCancel={ () => setView( 'list' ) }
+			/>
+		);
+	}
+
+	return (
+		<div>
+			{ notice && (
+				<Notice
+					status={ notice.type }
+					onRemove={ () => setNotice( null ) }
+				>
+					{ notice.text }
+				</Notice>
+			) }
+			<TourList
+				tours={ tours }
+				origin={ boot.origin }
+				loading={ loading }
+				filter={ filter }
+				canPublish={ !! boot.canPublish }
+				busyId={ busyId }
+				onFilter={ setFilter }
+				onNew={ () => setView( 'create' ) }
+				onEdit={ ( id ) => setView( { editId: id } ) }
+				onPublish={ ( id ) => runAction( publishTour, id ) }
+				onRetract={ ( id ) =>
+					runAction(
+						retractTour,
+						id,
+						__( 'Retract this published tour?', 'terraviz' )
+					)
+				}
+				onDelete={ ( id ) =>
+					runAction(
+						deleteTour,
+						id,
+						__(
+							'Permanently delete this tour? This cannot be undone.',
+							'terraviz'
+						)
+					)
+				}
+			/>
+		</div>
+	);
+}
+
 /**
  * The "coming soon" placeholder for a nav item that is on the roadmap but not
  * built yet. Keeps the IA complete without faking a feature.
@@ -509,6 +617,8 @@ export default function App( { boot } ) {
 				return <Analytics />;
 			case 'feedback':
 				return <Feedback />;
+			case 'tours':
+				return <ToursSection boot={ boot } />;
 			default:
 				return <ComingSoon sectionKey={ activeSection } />;
 		}
