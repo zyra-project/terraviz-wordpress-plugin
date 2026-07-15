@@ -580,6 +580,91 @@ final class PublishClient {
 	}
 
 	/**
+	 * `GET /api/v1/publish/tours` — list the caller's tours (cursor-paginated).
+	 *
+	 * @param array<string,scalar> $query Optional `cursor`, `limit`.
+	 * @return array<string,mixed>
+	 */
+	public function list_tours( array $query = array() ): array {
+		$path  = '/api/v1/publish/tours';
+		$clean = array();
+		foreach ( array( 'cursor', 'limit' ) as $key ) {
+			if ( isset( $query[ $key ] ) && '' !== (string) $query[ $key ] ) {
+				$clean[ $key ] = (string) $query[ $key ];
+			}
+		}
+		if ( ! empty( $clean ) ) {
+			// Single-encode (see list_datasets) so a cursor with '+' or '/'
+			// round-trips.
+			$path = add_query_arg( array_map( 'rawurlencode', $clean ), $path );
+		}
+
+		return $this->send( 'GET', $path );
+	}
+
+	/**
+	 * `GET /api/v1/publish/tours/:id` — fetch one tour row.
+	 *
+	 * @param string $id Tour id.
+	 * @return array<string,mixed>
+	 */
+	public function get_tour( string $id ): array {
+		return $this->send( 'GET', '/api/v1/publish/tours/' . rawurlencode( $id ) );
+	}
+
+	/**
+	 * `POST /api/v1/publish/tours/draft` — mint a fresh draft tour (the "New tour"
+	 * flow; the actual tour content is then authored in the Terraviz app).
+	 *
+	 * @param array<string,mixed> $body Optional `{ title }`.
+	 * @return array<string,mixed>
+	 */
+	public function create_tour_draft( array $body = array() ): array {
+		return $this->send( 'POST', '/api/v1/publish/tours/draft', $body );
+	}
+
+	/**
+	 * `PUT /api/v1/publish/tours/:id` — patch tour metadata.
+	 *
+	 * @param string              $id   Tour id.
+	 * @param array<string,mixed> $body Fields to change.
+	 * @return array<string,mixed>
+	 */
+	public function update_tour( string $id, array $body ): array {
+		return $this->send( 'PUT', '/api/v1/publish/tours/' . rawurlencode( $id ), $body );
+	}
+
+	/**
+	 * `POST /api/v1/publish/tours/:id/publish` — publish a tour.
+	 *
+	 * @param string $id Tour id.
+	 * @return array<string,mixed>
+	 */
+	public function publish_tour( string $id ): array {
+		return $this->send( 'POST', '/api/v1/publish/tours/' . rawurlencode( $id ) . '/publish', array() );
+	}
+
+	/**
+	 * `POST /api/v1/publish/tours/:id/retract` — retract a published tour.
+	 *
+	 * @param string $id Tour id.
+	 * @return array<string,mixed>
+	 */
+	public function retract_tour( string $id ): array {
+		return $this->send( 'POST', '/api/v1/publish/tours/' . rawurlencode( $id ) . '/retract', array() );
+	}
+
+	/**
+	 * `DELETE /api/v1/publish/tours/:id` — hard-delete a tour row.
+	 *
+	 * @param string $id Tour id.
+	 * @return array<string,mixed>
+	 */
+	public function delete_tour( string $id ): array {
+		return $this->send( 'DELETE', '/api/v1/publish/tours/' . rawurlencode( $id ) );
+	}
+
+	/**
 	 * `GET /api/v1/featured-hero` — read the current "right now" hero override.
 	 *
 	 * This is the *public* read endpoint (the publish route exposes no

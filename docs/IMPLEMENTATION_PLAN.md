@@ -329,7 +329,7 @@ located upstream:
 |---|---|---|
 | **Analytics** | `analytics.ts`, `analytics-export.ts` | ✅ **shipped** — all seven sections (Overview · Datasets · Spatial · Engagement · Performance · Orbit · Research) behind a sub-tab strip |
 | **Feedback** | `feedback.ts` | ✅ **shipped** — AI (Orbit thumbs) + General (bug/feature/other) review tabs, with a per-report screenshot drill-down |
-| **Tours CRUD** | `tours.ts`, `tours/[id]*.ts`, `tours/draft.ts` | full lifecycle (embed block already exists for read) |
+| **Tours CRUD** | `tours.ts`, `tours/[id]*.ts`, `tours/draft.ts` | ✅ **shipped (management)** — list + new-draft + metadata edit + publish/retract/delete; content authored in the Terraviz app |
 | **Import** | (bulk manifest) | CSV/JSON → drafts; remote-node + CLI paths are out of plugin scope |
 | **Workflows** | `workflows.ts`, `workflows/[id].ts`, `workflows/due.ts` | scheduled refresh pipelines |
 | **Node profile** | `node-profile.ts`, `node-profile/logo.ts` | ✅ **shipped** — org identity + logo |
@@ -394,6 +394,22 @@ located upstream:
 > `useResource`). No bulk export: the node keeps CSV/JSONL on its machine endpoint
 > with a bearer-token fallback, so the plugin does not surface it. The Sidebar item
 > flips `built: true`.
+>
+> **Tours — management (shipped).** The `Newsroom → Tours` view
+> (`blocks/admin/{TourList,TourForm}.js`, publish-tier) manages the tour catalog:
+> a status-filtered list (draft/published/retracted, derived from
+> `published_at`/`retracted_at` like datasets), **New tour** (mints an empty draft
+> via `/tours/draft`), a **metadata** form (title + description), and
+> **publish/retract/delete** lifecycle actions. The tour *content* — the task
+> sequence, camera moves, narration — is **authored in the Terraviz app**, not
+> ported into PHP (host-adapter principle); each row and the edit form link out to
+> the app editor (`<origin>/?tourEdit=<id>`). `PublishClient::{list,get,
+> create_tour_draft,update,publish,retract,delete}_tour` + `PublisherController`
+> (`TOURS_BASE`: `GET` list, `POST /draft`, `GET`/`PUT`/`DELETE {id}`,
+> `POST {id}/publish|retract`; `normalize_tour_body` allowlists **title +
+> description only** — node-managed fields like slug/refs/visibility are never
+> forwarded). The Sidebar item flips `built: true`. The node's tour authoring
+> surface (`/tours/{id}/{json,media,preview}`) stays app-side and isn't proxied.
 >
 > **Node profile (shipped).** The `Settings → Node profile` view
 > (`blocks/admin/NodeProfile.js`, configure-tier) edits the host org's identity —

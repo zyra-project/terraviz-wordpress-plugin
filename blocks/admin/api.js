@@ -440,6 +440,77 @@ export function getFeedback( query ) {
 	return apiFetch( { url } );
 }
 
+const toursUrl = () => `${ root }/tours`;
+const tourUrl = ( id ) => `${ toursUrl() }/${ encodeURIComponent( id ) }`;
+
+/**
+ * List the caller's tours, following the node's `next_cursor` pagination to
+ * completion (the same page-walking listDatasets does).
+ *
+ * @return {Promise<{tours: Array}>} Every tour across all pages.
+ */
+export async function listTours() {
+	const MAX_PAGES = 100;
+	const tours = [];
+	let cursor;
+	for ( let page = 0; page < MAX_PAGES; page++ ) {
+		const query = cursor ? { cursor } : {};
+		const qs = new URLSearchParams( query ).toString();
+		const url = qs ? `${ toursUrl() }?${ qs }` : toursUrl();
+		// eslint-disable-next-line no-await-in-loop -- pages are sequential: each request needs the previous cursor.
+		const res = await apiFetch( { url } );
+		if ( Array.isArray( res.tours ) ) {
+			tours.push( ...res.tours );
+		}
+		cursor = res.next_cursor;
+		if ( ! cursor ) {
+			return { tours };
+		}
+	}
+	throw new Error(
+		__(
+			'Could not load the full tour list (too many pages). Please reload and try again.',
+			'terraviz'
+		)
+	);
+}
+
+export function getTour( id ) {
+	return apiFetch( { url: tourUrl( id ) } );
+}
+
+/**
+ * Mint a fresh draft tour (the "New tour" flow). Only an optional title is sent;
+ * the node creates the row and an empty tour file, which is then authored in the
+ * Terraviz app.
+ *
+ * @param {Object} [data] `{ title? }`.
+ * @return {Promise<{tour: Object}>} The created draft.
+ */
+export function createTourDraft( data ) {
+	return apiFetch( {
+		url: `${ toursUrl() }/draft`,
+		method: 'POST',
+		data: data || {},
+	} );
+}
+
+export function updateTour( id, data ) {
+	return apiFetch( { url: tourUrl( id ), method: 'PUT', data } );
+}
+
+export function publishTour( id ) {
+	return apiFetch( { url: `${ tourUrl( id ) }/publish`, method: 'POST' } );
+}
+
+export function retractTour( id ) {
+	return apiFetch( { url: `${ tourUrl( id ) }/retract`, method: 'POST' } );
+}
+
+export function deleteTour( id ) {
+	return apiFetch( { url: tourUrl( id ), method: 'DELETE' } );
+}
+
 /**
  * Normalise an apiFetch rejection into `{ message, errors }`. apiFetch rejects
  * with the parsed JSON error body, so field-validation errors from the node

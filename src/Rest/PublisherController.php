@@ -59,6 +59,7 @@ final class PublisherController {
 	private const NODE_PROFILE_BASE = '/publisher/node-profile';
 	private const ANALYTICS_BASE    = '/publisher/analytics';
 	private const FEEDBACK_BASE     = '/publisher/feedback';
+	private const TOURS_BASE        = '/publisher/tours';
 
 	/**
 	 * URL-segment pattern for a dataset id (ULID or slug).
@@ -556,6 +557,86 @@ final class PublisherController {
 				'permission_callback' => array( $this, 'require_publish' ),
 			)
 		);
+
+		// Tours — manage the tour catalog (list + lifecycle). The tour *content*
+		// (tasks, camera) is authored in the Terraviz app; the plugin surfaces
+		// management only. Publish-tier, matching the Newsroom "Tours" nav item.
+		register_rest_route(
+			self::NAMESPACE,
+			self::TOURS_BASE,
+			array(
+				array(
+					'methods'             => 'GET',
+					'callback'            => array( $this, 'list_tours' ),
+					'permission_callback' => array( $this, 'require_publish' ),
+					'args'                => array(
+						'cursor' => array(
+							'type'              => 'string',
+							'required'          => false,
+							'sanitize_callback' => 'sanitize_text_field',
+						),
+						'limit'  => array(
+							'type'     => 'integer',
+							'required' => false,
+						),
+					),
+				),
+			)
+		);
+
+		// A dedicated /draft sub-route mints an empty draft (the "New tour" flow).
+		// Registered before the {id} route so 'draft' can't be read as an id.
+		register_rest_route(
+			self::NAMESPACE,
+			self::TOURS_BASE . '/draft',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'create_tour_draft' ),
+				'permission_callback' => array( $this, 'require_publish' ),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			self::TOURS_BASE . '/' . self::ID_PATTERN,
+			array(
+				array(
+					'methods'             => 'GET',
+					'callback'            => array( $this, 'get_tour' ),
+					'permission_callback' => array( $this, 'require_publish' ),
+				),
+				array(
+					'methods'             => 'PUT',
+					'callback'            => array( $this, 'update_tour' ),
+					'permission_callback' => array( $this, 'require_publish' ),
+				),
+				array(
+					'methods'             => 'DELETE',
+					'callback'            => array( $this, 'delete_tour' ),
+					'permission_callback' => array( $this, 'require_publish' ),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			self::TOURS_BASE . '/' . self::ID_PATTERN . '/publish',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'publish_tour' ),
+				'permission_callback' => array( $this, 'require_publish' ),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			self::TOURS_BASE . '/' . self::ID_PATTERN . '/retract',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'retract_tour' ),
+				'permission_callback' => array( $this, 'require_publish' ),
+			)
+		);
 	}
 
 	/**
@@ -950,6 +1031,124 @@ final class PublisherController {
 		}
 
 		return $this->respond( $client->get_feedback( $this->normalize_feedback_query( $request->get_query_params() ) ) );
+	}
+
+	/**
+	 * GET the caller's tours (cursor-paginated).
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function list_tours( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		$query = array();
+		foreach ( array( 'cursor', 'limit' ) as $key ) {
+			$value = $request->get_param( $key );
+			if ( null !== $value && '' !== (string) $value ) {
+				$query[ $key ] = (string) $value;
+			}
+		}
+
+		return $this->respond( $client->list_tours( $query ) );
+	}
+
+	/**
+	 * POST a fresh draft tour (the "New tour" flow). Only an optional title is
+	 * forwarded; the node mints the row + empty tour file.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function create_tour_draft( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		return $this->respond( $client->create_tour_draft( $this->normalize_tour_body( (array) $request->get_json_params() ) ) );
+	}
+
+	/**
+	 * GET one tour row.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function get_tour( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		return $this->respond( $client->get_tour( (string) $request->get_param( 'id' ) ) );
+	}
+
+	/**
+	 * PUT a tour-metadata patch (title / description). Tour *content* is authored
+	 * in the Terraviz app, not here, so only the metadata fields are allowlisted.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function update_tour( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		$id   = (string) $request->get_param( 'id' );
+		$body = $this->normalize_tour_body( (array) $request->get_json_params() );
+
+		return $this->respond( $client->update_tour( $id, $body ) );
+	}
+
+	/**
+	 * POST to publish a tour.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function publish_tour( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		return $this->respond( $client->publish_tour( (string) $request->get_param( 'id' ) ) );
+	}
+
+	/**
+	 * POST to retract a published tour.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function retract_tour( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		return $this->respond( $client->retract_tour( (string) $request->get_param( 'id' ) ) );
+	}
+
+	/**
+	 * DELETE a tour row.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function delete_tour( WP_REST_Request $request ): WP_REST_Response {
+		$client = $this->client();
+		if ( null === $client ) {
+			return $this->credential_missing();
+		}
+
+		return $this->respond( $client->delete_tour( (string) $request->get_param( 'id' ) ) );
 	}
 
 	/**
@@ -2652,6 +2851,35 @@ final class PublisherController {
 			$id = (int) $raw['id'];
 			if ( $id >= 1 ) {
 				$out['id'] = $id;
+			}
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Reduce a tour body to the metadata the plugin manages — `title` and
+	 * `description` only. Tour *content* (tasks, camera) is authored in the
+	 * Terraviz app, and node-managed fields (slug, refs, visibility) aren't
+	 * exposed here, so they're never forwarded. Values are trimmed; the node
+	 * validates (title ≥3/≤200 chars, no control chars) and returns a field-error
+	 * envelope the UI surfaces. A `null` description clears it.
+	 *
+	 * @param array<string,mixed> $raw Request body.
+	 * @return array<string,string|null>
+	 */
+	public function normalize_tour_body( array $raw ): array {
+		$out = array();
+
+		if ( isset( $raw['title'] ) && ( is_string( $raw['title'] ) || is_numeric( $raw['title'] ) ) ) {
+			$out['title'] = trim( (string) $raw['title'] );
+		}
+
+		if ( array_key_exists( 'description', $raw ) ) {
+			if ( null === $raw['description'] ) {
+				$out['description'] = null;
+			} elseif ( is_string( $raw['description'] ) || is_numeric( $raw['description'] ) ) {
+				$out['description'] = trim( (string) $raw['description'] );
 			}
 		}
 

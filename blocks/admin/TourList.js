@@ -1,0 +1,361 @@
+/**
+ * The tour list view — mirrors the Datasets scene: status count tiles that double
+ * as filters, and a table with an inline status badge, slug, last-updated, and the
+ * lifecycle row actions. "Edit" opens the plugin's metadata form; "Author"
+ * links out to the Terraviz tour editor for the tour's content.
+ */
+import { __, _n, sprintf } from '@wordpress/i18n';
+import { Button, Spinner, ExternalLink } from '@wordpress/components';
+import { deriveStatus, statusLabel } from './status';
+
+const STATUSES = [ 'draft', 'published', 'retracted' ];
+
+const BADGE = {
+	draft: { bg: '#f0f0f1', fg: '#50575e' },
+	published: { bg: '#edfaef', fg: '#00690e' },
+	retracted: { bg: '#fcf0e6', fg: '#8a4b00' },
+};
+
+function StatusBadge( { status } ) {
+	const c = BADGE[ status ] || BADGE.draft;
+	return (
+		<span
+			style={ {
+				display: 'inline-block',
+				padding: '1px 8px',
+				borderRadius: '9px',
+				fontSize: '11px',
+				fontWeight: 600,
+				lineHeight: '18px',
+				background: c.bg,
+				color: c.fg,
+			} }
+		>
+			{ statusLabel( status ) }
+		</span>
+	);
+}
+
+function tileStyle( active ) {
+	return {
+		flex: '1 1 160px',
+		textAlign: 'left',
+		border: active ? '1px solid #2271b1' : '1px solid #dcdcde',
+		boxShadow: active ? 'inset 0 0 0 1px #2271b1' : 'none',
+		borderRadius: '4px',
+		padding: '12px 16px',
+		background: '#fff',
+		cursor: 'pointer',
+	};
+}
+
+function FilterTile( { label, count, active, onClick } ) {
+	return (
+		<button
+			type="button"
+			aria-pressed={ active }
+			onClick={ onClick }
+			style={ tileStyle( active ) }
+		>
+			<div
+				style={ {
+					fontSize: '12px',
+					textTransform: 'uppercase',
+					letterSpacing: '0.04em',
+					color: '#646970',
+				} }
+			>
+				{ label }
+			</div>
+			<div
+				style={ {
+					fontSize: '24px',
+					fontWeight: 700,
+					lineHeight: 1.2,
+					marginTop: '2px',
+					color: '#1d2327',
+				} }
+			>
+				{ count }
+			</div>
+		</button>
+	);
+}
+
+/**
+ * Format an ISO timestamp as a short local date, or '—' when missing/unparseable.
+ *
+ * @param {string} iso ISO-8601 timestamp.
+ * @return {string} Short date, or '—'.
+ */
+function shortDate( iso ) {
+	if ( ! iso ) {
+		return '—';
+	}
+	const d = new Date( iso );
+	if ( Number.isNaN( d.getTime() ) ) {
+		return '—';
+	}
+	return d.toLocaleDateString( undefined, {
+		year: 'numeric',
+		month: 'short',
+		day: 'numeric',
+	} );
+}
+
+/**
+ * The Terraviz app URL that opens a tour in the authoring editor.
+ *
+ * @param {string} origin Node origin.
+ * @param {string} id     Tour id.
+ * @return {string} The editor URL.
+ */
+function editorUrl( origin, id ) {
+	return `${ origin.replace( /\/$/, '' ) }/?tourEdit=${ encodeURIComponent(
+		id
+	) }`;
+}
+
+export default function TourList( {
+	tours,
+	origin,
+	loading,
+	filter,
+	canPublish,
+	busyId,
+	onFilter,
+	onNew,
+	onEdit,
+	onPublish,
+	onRetract,
+	onDelete,
+} ) {
+	const counts = { draft: 0, published: 0, retracted: 0 };
+	tours.forEach( ( t ) => {
+		counts[ deriveStatus( t ) ] += 1;
+	} );
+	const rows = filter
+		? tours.filter( ( t ) => deriveStatus( t ) === filter )
+		: tours;
+
+	const toggle = ( status ) => onFilter( filter === status ? '' : status );
+
+	return (
+		<div>
+			<div
+				style={ {
+					display: 'flex',
+					alignItems: 'baseline',
+					justifyContent: 'space-between',
+					gap: '12px',
+					flexWrap: 'wrap',
+				} }
+			>
+				<p style={ { color: '#646970', margin: '4px 0 0' } }>
+					{ __(
+						'Guided tours across your datasets. Author the content in Terraviz; manage the lifecycle here.',
+						'terraviz'
+					) }
+				</p>
+				<div
+					style={ {
+						display: 'flex',
+						alignItems: 'center',
+						gap: '8px',
+					} }
+				>
+					{ filter && (
+						<Button variant="link" onClick={ () => onFilter( '' ) }>
+							{ __( 'Show all', 'terraviz' ) }
+						</Button>
+					) }
+					<Button variant="primary" onClick={ onNew }>
+						{ __( 'New tour', 'terraviz' ) }
+					</Button>
+					{ loading && <Spinner /> }
+				</div>
+			</div>
+
+			<div
+				style={ {
+					display: 'flex',
+					gap: '16px',
+					flexWrap: 'wrap',
+					margin: '16px 0',
+				} }
+			>
+				{ STATUSES.map( ( status ) => (
+					<FilterTile
+						key={ status }
+						label={ statusLabel( status ) }
+						count={ counts[ status ] }
+						active={ filter === status }
+						onClick={ () => toggle( status ) }
+					/>
+				) ) }
+			</div>
+
+			<table className="wp-list-table widefat fixed striped">
+				<thead>
+					<tr>
+						<th>{ __( 'Title', 'terraviz' ) }</th>
+						<th>{ __( 'Slug', 'terraviz' ) }</th>
+						<th style={ { width: '130px' } }>
+							{ __( 'Updated', 'terraviz' ) }
+						</th>
+						<th style={ { width: '260px' } }>
+							{ __( 'Actions', 'terraviz' ) }
+						</th>
+					</tr>
+				</thead>
+				<tbody>
+					{ ! loading && rows.length === 0 && (
+						<tr>
+							<td colSpan="4">
+								{ filter
+									? __(
+											'No tours in this status.',
+											'terraviz'
+									  )
+									: __( 'No tours yet.', 'terraviz' ) }
+							</td>
+						</tr>
+					) }
+					{ rows.map( ( tour ) => {
+						const status = deriveStatus( tour );
+						const busy = busyId === tour.id;
+
+						const actions = [];
+						actions.push(
+							<Button
+								key="edit"
+								variant="link"
+								onClick={ () => onEdit( tour.id ) }
+								disabled={ busy }
+							>
+								{ __( 'Edit', 'terraviz' ) }
+							</Button>
+						);
+						actions.push(
+							<ExternalLink
+								key="author"
+								href={ editorUrl( origin, tour.id ) }
+							>
+								{ __( 'Author', 'terraviz' ) }
+							</ExternalLink>
+						);
+						if ( canPublish && status !== 'published' ) {
+							actions.push(
+								<Button
+									key="publish"
+									variant="link"
+									onClick={ () => onPublish( tour.id ) }
+									disabled={ busy }
+								>
+									{ __( 'Publish', 'terraviz' ) }
+								</Button>
+							);
+						}
+						if ( canPublish && status === 'published' ) {
+							actions.push(
+								<Button
+									key="retract"
+									variant="link"
+									onClick={ () => onRetract( tour.id ) }
+									disabled={ busy }
+								>
+									{ __( 'Retract', 'terraviz' ) }
+								</Button>
+							);
+						}
+						if ( canPublish && status !== 'published' ) {
+							actions.push(
+								<Button
+									key="delete"
+									variant="link"
+									isDestructive
+									onClick={ () => onDelete( tour.id ) }
+									disabled={ busy }
+								>
+									{ __( 'Delete', 'terraviz' ) }
+								</Button>
+							);
+						}
+
+						return (
+							<tr key={ tour.id }>
+								<td>
+									<div
+										style={ {
+											display: 'flex',
+											alignItems: 'center',
+											gap: '8px',
+											flexWrap: 'wrap',
+										} }
+									>
+										<Button
+											variant="link"
+											onClick={ () => onEdit( tour.id ) }
+											style={ { fontWeight: 600 } }
+										>
+											{ tour.title ||
+												tour.slug ||
+												tour.id }
+										</Button>
+										<StatusBadge status={ status } />
+									</div>
+								</td>
+								<td>{ tour.slug || '—' }</td>
+								<td>{ shortDate( tour.updated_at ) }</td>
+								<td>
+									<div
+										style={ {
+											display: 'flex',
+											alignItems: 'center',
+											gap: '8px',
+											flexWrap: 'wrap',
+										} }
+									>
+										{ actions.map( ( action, i ) => (
+											<span
+												key={ action.key }
+												style={ {
+													display: 'inline-flex',
+													alignItems: 'center',
+													gap: '8px',
+												} }
+											>
+												{ i > 0 && (
+													<span
+														aria-hidden="true"
+														style={ {
+															color: '#c3c4c7',
+														} }
+													>
+														|
+													</span>
+												) }
+												{ action }
+											</span>
+										) ) }
+										{ busy && <Spinner /> }
+									</div>
+								</td>
+							</tr>
+						);
+					} ) }
+				</tbody>
+			</table>
+
+			{ ! loading && (
+				<p style={ { color: '#646970', marginTop: '8px' } }>
+					{ sprintf(
+						/* translators: %d: number of tours shown. */
+						_n( '%d tour', '%d tours', rows.length, 'terraviz' ),
+						rows.length
+					) }
+				</p>
+			) }
+		</div>
+	);
+}

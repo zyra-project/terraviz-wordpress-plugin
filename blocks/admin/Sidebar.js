@@ -86,7 +86,7 @@ export const NAV = [
 				key: 'tours',
 				label: __( 'Tours', 'terraviz' ),
 				tier: 'publish',
-				built: false,
+				built: true,
 			},
 		],
 	},

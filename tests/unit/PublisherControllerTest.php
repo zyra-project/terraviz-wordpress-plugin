@@ -2327,4 +2327,214 @@ class PublisherControllerTest extends WP_UnitTestCase {
 			)
 		);
 	}
+
+	public function test_tours_routes_require_publish_tier(): void {
+		$editor      = self::factory()->user->create( array( 'role' => 'editor' ) );
+		$contributor = self::factory()->user->create( array( 'role' => 'contributor' ) );
+
+		wp_set_current_user( $editor );
+		$this->assertTrue( $this->controller->require_publish() );
+
+		wp_set_current_user( $contributor );
+		$this->assertFalse( $this->controller->require_publish() );
+	}
+
+	public function test_list_tours_forwards_get_with_query(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['GET'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode(
+				array(
+					'tours'       => array(),
+					'next_cursor' => null,
+				)
+			),
+		);
+
+		$request = new WP_REST_Request( 'GET' );
+		$request->set_param( 'limit', '25' );
+		$response = $this->controller->list_tours( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( 'GET', end( $this->sent_methods ) );
+		$this->assertStringContainsString( '/api/v1/publish/tours', end( $this->sent_urls ) );
+		$this->assertStringContainsString( 'limit=25', end( $this->sent_urls ) );
+	}
+
+	public function test_get_tour_forwards_get_to_id_path(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['GET'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode( array( 'tour' => array( 'id' => 'T1' ) ) ),
+		);
+
+		$request = new WP_REST_Request( 'GET' );
+		$request->set_param( 'id', 'T1' );
+		$response = $this->controller->get_tour( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( 'GET', end( $this->sent_methods ) );
+		$this->assertStringEndsWith( '/api/v1/publish/tours/T1', end( $this->sent_urls ) );
+	}
+
+	public function test_create_tour_draft_forwards_post_with_normalized_title(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['POST'] = array(
+			'response' => array( 'code' => 201 ),
+			'body'     => (string) wp_json_encode(
+				array(
+					'tour' => array(
+						'id'    => 'T1',
+						'title' => 'My Tour',
+					),
+				)
+			),
+		);
+
+		$request = new WP_REST_Request( 'POST' );
+		$request->set_header( 'Content-Type', 'application/json' );
+		$request->set_body(
+			(string) wp_json_encode(
+				array(
+					'title'         => '  My Tour  ',
+					// Not part of the metadata allowlist — must be dropped.
+					'tour_json_ref' => 'r2:evil',
+					'slug'          => 'hacked',
+				)
+			)
+		);
+		$response = $this->controller->create_tour_draft( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 201, $response->get_status() );
+		$this->assertSame( 'POST', end( $this->sent_methods ) );
+		$this->assertStringEndsWith( '/api/v1/publish/tours/draft', end( $this->sent_urls ) );
+
+		$sent = json_decode( end( $this->sent_bodies ), true );
+		$this->assertSame( 'My Tour', $sent['title'] );
+		$this->assertArrayNotHasKey( 'tour_json_ref', $sent );
+		$this->assertArrayNotHasKey( 'slug', $sent );
+	}
+
+	public function test_update_tour_forwards_put_with_normalized_body(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['PUT'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => (string) wp_json_encode( array( 'tour' => array( 'id' => 'T1' ) ) ),
+		);
+
+		$request = new WP_REST_Request( 'PUT' );
+		$request->set_param( 'id', 'T1' );
+		$request->set_header( 'Content-Type', 'application/json' );
+		$request->set_body(
+			(string) wp_json_encode(
+				array(
+					'title'       => 'Renamed',
+					'description' => "Two\nlines",
+					'visibility'  => 'private',
+				)
+			)
+		);
+		$response = $this->controller->update_tour( $request );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( 'PUT', end( $this->sent_methods ) );
+		$this->assertStringEndsWith( '/api/v1/publish/tours/T1', end( $this->sent_urls ) );
+
+		$sent = json_decode( end( $this->sent_bodies ), true );
+		$this->assertSame( 'Renamed', $sent['title'] );
+		$this->assertSame( "Two\nlines", $sent['description'] );
+		// visibility isn't a plugin-managed metadata field — never forwarded.
+		$this->assertArrayNotHasKey( 'visibility', $sent );
+	}
+
+	public function test_tour_lifecycle_actions_forward_verbs(): void {
+		$this->configure_credential();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		add_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10, 3 );
+
+		$this->http_by_method['POST']   = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => '{"tour":{"id":"T1"}}',
+		);
+		$this->http_by_method['DELETE'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => '{"deleted_id":"T1"}',
+		);
+
+		$pub = new WP_REST_Request( 'POST' );
+		$pub->set_param( 'id', 'T1' );
+		$this->controller->publish_tour( $pub );
+		$this->assertStringEndsWith( '/api/v1/publish/tours/T1/publish', end( $this->sent_urls ) );
+
+		$ret = new WP_REST_Request( 'POST' );
+		$ret->set_param( 'id', 'T1' );
+		$this->controller->retract_tour( $ret );
+		$this->assertStringEndsWith( '/api/v1/publish/tours/T1/retract', end( $this->sent_urls ) );
+
+		$del = new WP_REST_Request( 'DELETE' );
+		$del->set_param( 'id', 'T1' );
+		$this->controller->delete_tour( $del );
+
+		remove_filter( 'pre_http_request', array( $this, 'intercept_http' ), 10 );
+
+		$this->assertSame( 'DELETE', end( $this->sent_methods ) );
+		$this->assertStringEndsWith( '/api/v1/publish/tours/T1', end( $this->sent_urls ) );
+	}
+
+	public function test_tour_without_credential_returns_409(): void {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		$this->assertSame( 409, $this->controller->list_tours( new WP_REST_Request( 'GET' ) )->get_status() );
+		$this->assertSame( 409, $this->controller->create_tour_draft( new WP_REST_Request( 'POST' ) )->get_status() );
+		$put = new WP_REST_Request( 'PUT' );
+		$put->set_param( 'id', 'T1' );
+		$this->assertSame( 409, $this->controller->update_tour( $put )->get_status() );
+	}
+
+	public function test_normalize_tour_body_allowlists_title_and_description(): void {
+		// Title trimmed; description preserved (incl. newlines); a null description
+		// clears; node-managed fields are dropped.
+		$out = $this->controller->normalize_tour_body(
+			array(
+				'title'         => '  Tour  ',
+				'description'   => "line1\nline2",
+				'slug'          => 'x',
+				'tour_json_ref' => 'r2:y',
+				'visibility'    => 'private',
+			)
+		);
+		$this->assertSame(
+			array(
+				'title'       => 'Tour',
+				'description' => "line1\nline2",
+			),
+			$out
+		);
+
+		$this->assertSame(
+			array( 'description' => null ),
+			$this->controller->normalize_tour_body( array( 'description' => null ) )
+		);
+
+		$this->assertSame( array(), $this->controller->normalize_tour_body( array( 'stray' => 1 ) ) );
+	}
 }
