@@ -2309,5 +2309,22 @@ class PublisherControllerTest extends WP_UnitTestCase {
 			)
 		);
 		$this->assertSame( array(), $bad );
+
+		// Without a valid view, nothing rides along — not even a well-formed range.
+		$this->assertSame(
+			array(),
+			$this->controller->normalize_feedback_query( array( 'days' => '30' ) )
+		);
+
+		// `id` is forwarded only for the screenshot view; a dashboard view drops it.
+		$this->assertSame(
+			array( 'view' => 'ai' ),
+			$this->controller->normalize_feedback_query(
+				array(
+					'view' => 'ai',
+					'id'   => '42',
+				)
+			)
+		);
 	}
 }

@@ -28,10 +28,22 @@ const tileRow = { display: 'flex', gap: '16px', flexWrap: 'wrap' };
  * The date portion (`YYYY-MM-DD`) of an ISO timestamp.
  *
  * @param {string} iso Timestamp.
- * @return {string} The day, or the raw value.
+ * @return {string} The day, or '' when the input isn't a string.
  */
 function day( iso ) {
 	return typeof iso === 'string' ? iso.slice( 0, 10 ) : '';
+}
+
+/**
+ * Return `url` only when it's an http(s) URL, else null. Feedback URLs are
+ * reader-submitted, so a `javascript:` / `data:` value must never reach an
+ * `href` where an admin could click it.
+ *
+ * @param {string} url Candidate URL.
+ * @return {?string} The safe URL, or null.
+ */
+function safeHttpUrl( url ) {
+	return /^https?:\/\//i.test( String( url || '' ).trim() ) ? url : null;
 }
 
 /**
@@ -178,9 +190,18 @@ function RecentAi( { rows } ) {
 			{ rows.map( ( r, i ) => {
 				const tags = Array.isArray( r.tags ) ? r.tags : [];
 				const isUp = r.rating === 'thumbs-up';
+				// The node's recent-feedback rows carry no id, so build a stable
+				// key from the timestamp + a slice of the content — this survives a
+				// prepend (new feedback) without a disclosure sticking to the wrong
+				// card the way a bare array index would.
+				const key = `${ r.created_at }:${ (
+					r.comment ||
+					r.user_message ||
+					''
+				).slice( 0, 32 ) }:${ i }`;
 				return (
 					<div
-						key={ i }
+						key={ key }
 						style={ {
 							border: '1px solid #dcdcde',
 							borderRadius: '4px',
@@ -354,18 +375,37 @@ export function GeneralFeedbackSection( { days } ) {
 									{
 										key: 'url',
 										label: __( 'Page', 'terraviz' ),
-										render: ( r ) =>
-											r.url ? (
-												<a
-													href={ r.url }
-													target="_blank"
-													rel="noreferrer noopener"
+										render: ( r ) => {
+											const href = safeHttpUrl( r.url );
+											if ( href ) {
+												return (
+													<a
+														href={ href }
+														target="_blank"
+														rel="noreferrer noopener"
+													>
+														{ __(
+															'Open',
+															'terraviz'
+														) }
+													</a>
+												);
+											}
+											// A non-http(s) value is shown as inert
+											// text, never a clickable href.
+											return r.url ? (
+												<span
+													style={ {
+														color: MUTED,
+													} }
+													title={ r.url }
 												>
-													{ __( 'Open', 'terraviz' ) }
-												</a>
+													{ truncate( r.url, 40 ) }
+												</span>
 											) : (
 												'—'
-											),
+											);
+										},
 									},
 									{
 										key: 'shot',

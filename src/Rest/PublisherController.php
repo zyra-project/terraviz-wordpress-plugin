@@ -2616,23 +2616,25 @@ final class PublisherController {
 	}
 
 	/**
-	 * Reduce a feedback-review query to the node's allowlist: the `view` enum, the
-	 * `days` (1–365) and `recent` (1–200) ranges clamped to their bounds, and a
-	 * positive integer `id` (only meaningful for the screenshot view). Anything
-	 * out of range is dropped so the node applies its default; the node
-	 * re-validates and is the authority.
+	 * Reduce a feedback-review query to the node's allowlist. A valid `view`
+	 * (`ai`/`general`/`screenshot`) is required — without it nothing is forwarded,
+	 * so a stray `days`/`id` can't ride an invalid request. Then: numeric `days`
+	 * (1–365) and `recent` (1–200) are clamped to their bounds and non-numeric
+	 * values are dropped (tolerant ranges, not enums); a positive integer `id` is
+	 * forwarded only for the screenshot view. The node re-validates and is the
+	 * authority.
 	 *
 	 * @param array<string,mixed> $raw Request query params.
 	 * @return array<string,int|string>
 	 */
 	public function normalize_feedback_query( array $raw ): array {
-		$out = array();
-
-		if ( isset( $raw['view'] ) && ( is_string( $raw['view'] ) || is_numeric( $raw['view'] ) )
-			&& in_array( (string) $raw['view'], array( 'ai', 'general', 'screenshot' ), true )
+		if ( ! isset( $raw['view'] ) || ! ( is_string( $raw['view'] ) || is_numeric( $raw['view'] ) )
+			|| ! in_array( (string) $raw['view'], array( 'ai', 'general', 'screenshot' ), true )
 		) {
-			$out['view'] = (string) $raw['view'];
+			return array();
 		}
+		$view = (string) $raw['view'];
+		$out  = array( 'view' => $view );
 
 		$ranges = array(
 			'days'   => array( 1, 365 ),
@@ -2644,9 +2646,9 @@ final class PublisherController {
 			}
 		}
 
-		// A general_feedback row id, for the screenshot fetch. Positive integers
-		// only — a zero/negative id would address no record.
-		if ( isset( $raw['id'] ) && is_numeric( $raw['id'] ) ) {
+		// A general_feedback row id, for the screenshot fetch only. Positive
+		// integers only — a zero/negative id would address no record.
+		if ( 'screenshot' === $view && isset( $raw['id'] ) && is_numeric( $raw['id'] ) ) {
 			$id = (int) $raw['id'];
 			if ( $id >= 1 ) {
 				$out['id'] = $id;
