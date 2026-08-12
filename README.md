@@ -159,6 +159,14 @@ then **Activate**.
 You don't have to build it yourself: every CI run publishes the same ZIP as a
 downloadable **`terraviz-plugin-zip`** artifact (Actions → the run → Artifacts).
 
+### Blocked by a WAF on upload?
+
+If the upload dies on a Cloudflare block page citing **CVE-2019-7816** ("Adobe
+ColdFusion – Dangerous File Upload"), that's a known false positive against
+WordPress plugin ZIP uploads in general — not something in this plugin. Install
+via WP-CLI or SFTP instead, or add a narrow WAF exception:
+[`docs/INSTALLING_BEHIND_A_WAF.md`](docs/INSTALLING_BEHIND_A_WAF.md).
+
 ### Cutting a release
 
 Tagged releases publish a versioned ZIP to the repo's GitHub Releases:
