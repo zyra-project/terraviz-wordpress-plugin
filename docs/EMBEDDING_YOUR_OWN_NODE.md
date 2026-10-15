@@ -87,8 +87,13 @@ Getting the list right:
 
 ### If the node already has a CSP
 
-Add `frame-ancestors …` to the existing policy as one more `;`-separated
-directive:
+If the policy already has a `frame-ancestors` directive (often
+`frame-ancestors 'self'` or `'none'`), **edit that directive** to the full list.
+Don't add a second one: browsers use only the first `frame-ancestors` in a
+policy and ignore any repeat, so the embed stays blocked.
+
+If the policy has no `frame-ancestors` yet, add it as one more `;`-separated
+directive. Either way the result has exactly one:
 
 ```
   Content-Security-Policy: default-src 'self'; connect-src 'self' …; img-src 'self' data: blob: …; frame-ancestors 'self' https://www.example.org
