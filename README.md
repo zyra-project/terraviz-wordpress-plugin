@@ -55,7 +55,10 @@ what the plugin actually renders.
   shortcode" button for Classic authors.
 - **Settings screen** (**Settings → Terraviz**) — node origin (default the
   canonical node, overridable per block), default embed options, loading /
-  telemetry posture, and a public "test connection" probe.
+  telemetry posture, and a public "test connection" probe. Pointing it at a
+  node you run? That node must allow your site in its `frame-ancestors`, or the
+  globe won't load:
+  [`docs/EMBEDDING_YOUR_OWN_NODE.md`](docs/EMBEDDING_YOUR_OWN_NODE.md).
 - **Transient caching** of catalog + dataset reads (the cached catalog is
   compressed so it survives object caches).
 - **Generated PHP wire types** from Terraviz's published `/schema/v1` JSON
