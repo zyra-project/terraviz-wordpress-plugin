@@ -91,6 +91,14 @@ Yes — set the node origin in **Settings → Terraviz**, or override it per blo
 
 For safety, a per-embed `origin` override changes which node the interactive globe (iframe) loads from, but the plugin only fetches the server-side fallback data from the site-configured node. A site owner can allow the server-side fetch to use additional trusted nodes with the `terraviz_allowed_fetch_origins` filter.
 
+Your node must also allow your site to frame it — see the next question.
+
+= The text fallback shows, but the interactive globe never loads from my own node =
+
+The node is refusing to be framed by your site. The globe is the node's web app in a cross-origin iframe, and browsers only show it if the node's response headers allow your site as a frame ancestor. Terraviz itself ships no framing restriction, so this comes from something added to the node: a Content-Security-Policy with `frame-ancestors 'self'` or `'none'`, an `X-Frame-Options` header (Cloudflare's "Add security headers" managed transform adds `X-Frame-Options: SAMEORIGIN`), or Cloudflare Access in front of the app. The browser console names which one. "Test connection" still passes, because it is a server-side request and framing rules only apply in the browser.
+
+The fix is on the node, not in WordPress: add your site's origins to a `frame-ancestors` directive in the node's `public/_headers` (for example `Content-Security-Policy: frame-ancestors 'self' https://www.example.org https://example.org`), merge it into any existing policy rather than adding a second one, remove any `X-Frame-Options`, and redeploy. The canonical public node already allows every site. Full walkthrough: https://github.com/zyra-project/terraviz-wordpress-plugin/blob/main/docs/EMBEDDING_YOUR_OWN_NODE.md
+
 == Shortcode ==
 
 `[terraviz dataset="hurricane-season-2024" terrain="on" rotate="on"]`
