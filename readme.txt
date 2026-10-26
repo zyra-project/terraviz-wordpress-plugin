@@ -55,7 +55,15 @@ Using a Terraviz node is subject to that node's privacy policy. For the default 
 3. (Optional) Visit **Settings → Terraviz** to set the node origin and default embed options. The defaults work out of the box against the canonical public node.
 4. Add a **Terraviz Dataset**, **Tour**, **Catalog**, **Right-Now Hero**, or **Related Datasets** block to any page or post, or use the `[terraviz dataset="..."]` shortcode.
 
+If your site sits behind a web application firewall and the ZIP upload is blocked (Cloudflare users may see a block page citing CVE-2019-7816), see the FAQ entry below — install via WP-CLI or SFTP, or add a narrow WAF exception.
+
 == Frequently Asked Questions ==
+
+= My upload is blocked by Cloudflare citing CVE-2019-7816 =
+
+That is a false positive from the Cloudflare managed rule "Adobe ColdFusion - Dangerous File Upload - CVE:CVE-2019-7816", and it hits WordPress plugin and theme ZIP uploads generally rather than anything specific to this plugin. The rule inspects the multipart body your browser posts to `wp-admin/update.php?action=upload-plugin` and blocks it at Cloudflare's edge, so the request never reaches WordPress and no plugin-side code can work around it. This package contains no ColdFusion, JSP, or ASP files of any kind, and every entry in the ZIP is compressed, so no file contents are even visible to the rule.
+
+Two ways through. If you do not administer the Cloudflare zone, install by a route that is not a browser upload: copy the ZIP to the server and run `wp plugin install /path/to/terraviz-<version>.zip --activate` via WP-CLI, or unzip the archive into `wp-content/plugins/` over SFTP so the inner folder is `terraviz`, then activate from the Plugins screen. If you do administer the zone, add a WAF exception that skips only that one rule, only on `/wp-admin/update.php`, and only from your own IP, and make sure it is ordered before the Managed Ruleset or it will not take effect. Full walkthrough: https://github.com/zyra-project/terraviz-wordpress-plugin/blob/main/docs/INSTALLING_BEHIND_A_WAF.md
 
 = Do I need an account or API key to embed globes? =
 
